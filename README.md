@@ -4,7 +4,7 @@
 
 **一款纯前端、零依赖、离线可用的静态博客 Markdown 博文生成器**
 
-专为 [Astro-Firefly](https://github.com/CuteLeaf/Firefly) 主题设计 · 可视化填写文章信息 · 一键生成标准 YAML FrontMatter 博客文章
+专为 [Firefly](https://github.com/CuteLeaf/Firefly) 主题设计 · 可视化填写文章信息 · 一键生成标准 YAML FrontMatter 博客文章
 
 简体中文 &nbsp;|&nbsp; 无后端 &nbsp;|&nbsp; 无需构建 &nbsp;|&nbsp; 本地离线
 
