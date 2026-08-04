@@ -301,6 +301,20 @@ const MD = (function () {
     s = s.replace(/\[([^\]]*)\]\(([^()\s]+(?:\([^()]*\)[^()\s]*)*)(?:\s+["']([^"']*)["'])?\)/g,
       (m, txt, url, title) => put(`<a href="${escapeAttr(safeUrl(unesc(url)))}"${title ? ` title="${q(title)}"` : ''}${/^https?:/i.test(url) ? ' target="_blank" rel="noopener"' : ''}>${inlineRaw(txt, ctx)}</a>`));
 
+    // 8.5) Wiki Link 内部链接 [[slug]] / [[slug|别名]] / [[#标题]] / [[slug#标题|别名]]
+    s = s.replace(/\[\[([^\]]+?)\]\]/g, (m, inner) => {
+      let target = inner.trim(), alias = '';
+      const bar = target.indexOf('|');
+      if (bar >= 0) { alias = target.slice(bar + 1).trim(); target = target.slice(0, bar).trim(); }
+      const hash = target.indexOf('#');
+      const slug = hash >= 0 ? target.slice(0, hash) : target;
+      const heading = hash >= 0 ? target.slice(hash) : '';
+      let href, text;
+      if (!slug) { href = heading || '#'; text = alias || heading.replace(/^#/, ''); }
+      else { href = '/posts/' + slug.replace(/^\/+|\/+$/g, '') + '/' + heading; text = alias || slug.split('/').pop(); }
+      return put(`<a href="${escapeAttr(href)}" class="wiki-link"${/^https?:/i.test(href) ? ' target="_blank" rel="noopener"' : ''}>${inlineRaw(text, ctx)}</a>`);
+    });
+
     // 9) 自动链接
     s = s.replace(/&lt;((?:https?|mailto):[^\s&]+)&gt;/g, (m, url) => put(`<a href="${escapeAttr(safeUrl(unesc(url)))}" target="_blank" rel="noopener">${url}</a>`));
     s = s.replace(/(^|[\s(])((?:https?:\/\/)[^\s<>()"']+[^\s<>()"'.,;:!?])/g,
@@ -318,7 +332,6 @@ const MD = (function () {
     s = s.replace(/(^|[^\w*])\*([^\s*][\s\S]*?[^\s*]|[^\s*])\*(?!\w)/g, '$1<em>$2</em>');
     s = s.replace(/(^|[^\w_])_([^\s_][\s\S]*?[^\s_]|[^\s_])_(?!\w)/g, '$1<em>$2</em>');
     s = s.replace(/~~([\s\S]+?)~~/g, '<del>$1</del>');
-    s = s.replace(/==([\s\S]+?)==/g, '<mark>$1</mark>');
 
     // 11) 硬换行：编辑器里直接回车即换行（WYSIWYG），导出时 normalizeBody 会自动补两个空格保证标准 Markdown
     s = s.replace(/\n/g, '<br>\n');
@@ -363,6 +376,8 @@ const MD = (function () {
         const code = buf.join('\n');
         if (lang === 'mermaid') {
           out += `<div class="mermaid-block"><div class="mermaid-head"><svg class="ico ico-sm"><use href="#i-mermaid"/></svg> Mermaid 图表</div><pre class="mermaid-code">${escapeHtml(code)}</pre><div class="mermaid-hint">构建时由 Firefly 渲染为静态 SVG</div></div>`;
+        } else if (lang === 'plantuml') {
+          out += `<div class="plantuml-block"><div class="mermaid-head"><svg class="ico ico-sm"><use href="#i-mermaid"/></svg> PlantUML 图表</div><pre class="plantuml-code">${escapeHtml(code)}</pre><div class="mermaid-hint">构建时由 Firefly 渲染为静态 SVG</div></div>`;
         } else {
           out += `<pre><div class="code-head"><span>${escapeHtml(lang || 'text')}</span><span>${buf.length} 行</span></div><code class="lang-${escapeAttr(lang)}">${HL(code, lang)}</code></pre>`;
         }
@@ -426,6 +441,46 @@ const MD = (function () {
         }
         if (!closed) { /* 未闭合也照常输出 */ }
         out += sanitizeTag(buf.join('\n'));
+        continue;
+      }
+
+      // 图片画廊 [grid] ... [/grid]
+      if (/^ {0,3}\[grid\]\s*$/i.test(line)) {
+        const buf = []; i++;
+        while (i < lines.length && !/^ {0,3}\[\/grid\]\s*$/i.test(lines[i])) { buf.push(lines[i]); i++; }
+        if (i < lines.length) i++;
+        const items = buf.map(l => l.trim()).filter(Boolean).map(l => {
+          const imm = /^\s*!\[([^\]]*)\]\(([^()\s]+(?:\([^()]*\)[^()\s]*)*)(?:\s+["']([^"']*)["'])?\)/.exec(l);
+          if (imm) {
+            const alt = imm[1], url = imm[2], title = imm[3];
+            const img = `<img src="${escapeAttr(safeUrl(unesc(url)))}" alt="${q(alt)}"${title ? ` title="${q(title)}"` : ''} loading="lazy">`;
+            return `<figure class="grid-item">${img}${alt ? `<figcaption>${inlineRaw(alt, ctx)}</figcaption>` : ''}</figure>`;
+          }
+          return `<div class="grid-item">${inline(l, ctx)}</div>`;
+        }).join('');
+        out += `<div class="img-grid">${items}</div>`;
+        continue;
+      }
+
+      // 代码组 ::: code-group labels=[...]
+      let mCG = /^ {0,3}:::\s*code-group\s*(?:labels=\[([^\]]*)\])?\s*$/i.exec(line);
+      if (mCG) {
+        const labels = (mCG[1] || '').split(',').map(s => s.trim()).filter(Boolean);
+        const blocks = []; i++;
+        while (i < lines.length && !/^ {0,3}:::\s*$/.test(lines[i])) {
+          const fm = RE.fence.exec(lines[i]);
+          if (fm) {
+            const fence = fm[1][0], len = fm[1].length, lang = fm[2] || '';
+            const cbuf = []; i++;
+            while (i < lines.length) {
+              if (new RegExp('^ {0,3}' + (fence === '`' ? '`' : '~') + '{' + len + ',}\\s*$').test(lines[i])) { i++; break; }
+              cbuf.push(lines[i]); i++;
+            }
+            blocks.push({ lang, code: cbuf.join('\n') });
+          } else { i++; }
+        }
+        if (i < lines.length) i++;
+        if (blocks.length) out += renderCodeGroup(blocks, labels, ctx);
         continue;
       }
 
@@ -630,6 +685,22 @@ const MD = (function () {
       </span></a>`;
   }
 
+  // 代码组：将多个代码块渲染为带标签页的切换容器（纯 CSS 切换，无需 JS）
+  function renderCodeGroup(blocks, labels, ctx) {
+    const gid = ctx.uid('cg');
+    const labelFor = (b, i) => escapeHtml(labels[i] || b.lang || ('代码 ' + (i + 1)));
+    const radios = blocks.map((b, i) =>
+      `<input class="cg-radio" type="radio" name="${escapeAttr(gid)}" id="${escapeAttr(gid)}-${i}"${i === 0 ? ' checked' : ''}>`).join('');
+    const tabbar = blocks.map((b, i) =>
+      `<label class="cg-tab" for="${escapeAttr(gid)}-${i}">${labelFor(b, i)}</label>`).join('');
+    const panels = blocks.map(b => {
+      const lang = b.lang || 'text';
+      const n = b.code.split('\n').length;
+      return `<div class="cg-panel"><pre><div class="code-head"><span>${escapeHtml(lang)}</span><span>${n} 行</span></div><code class="lang-${escapeAttr(lang)}">${HL(b.code, lang)}</code></pre></div>`;
+    }).join('');
+    return `<div class="code-group">${radios}<div class="cg-tabs">${tabbar}</div><div class="cg-panels">${panels}</div></div>`;
+  }
+
   return function render(src) {
     const ctx = {
       headings: [], footnotes: {}, footnoteOrder: [], seen: {},
@@ -681,7 +752,7 @@ const SAMPLE = `# 欢迎使用 Firefly Markdown
 
 剧透遮罩：这里有个秘密 :spoiler[其实我没有秘密 **嘿嘿**]，把鼠标移上去看看。
 
-高亮文本：==这段文字会被高亮==；任务清单：
+任务清单：
 
 - [x] 支持完整 FrontMatter
 - [x] 内置 Markdown 编辑器
@@ -1060,7 +1131,6 @@ const CMD = {
   bold: () => Editor.wrap('**', '**', '粗体文本'),
   italic: () => Editor.wrap('*', '*', '斜体文本'),
   strike: () => Editor.wrap('~~', '~~', '删除线'),
-  mark: () => Editor.wrap('==', '==', '高亮文本'),
   inlinecode: () => Editor.wrap('`', '`', 'code'),
   quote: () => Editor.linePrefix('> ', { strip: /^>\s?/ }),
   ul: () => Editor.linePrefix('- ', { strip: /^\s*[-*+]\s+/, clean: CLEAN_LINE }),
@@ -1110,6 +1180,10 @@ const CMD = {
   mathblock: () => Editor.insert('\n$$\n' + (Editor.sel().t || 'e^{i\\pi} + 1 = 0') + '\n$$\n\n'),
   math: () => openModal('#modalMath', () => { $('#mathTex').value = 'e^{i\\pi} + 1 = 0'; $$('#mathMode .seg-item').forEach(x => x.classList.toggle('active', x.dataset.m === 'inline')); $('#mathTex').focus(); }),
   mermaid: () => openModal('#modalMermaid', () => { $('#mmText').value = 'graph TD\n  A[开始] --> B{条件检查}\n  B -->|是| C[处理步骤 1]\n  B -->|否| D[处理步骤 2]\n  C --> E[结束]\n  D --> E'; $('#mmText').focus(); }),
+  wikilink: () => Editor.wrap('[[', ']]', 'slug|别名'),
+  plantuml: () => Editor.insert('\n```plantuml\n@startuml\nAlice -> Bob: 认证请求\nBob --> Alice: 响应\n@enduml\n```\n\n'),
+  grid: () => Editor.insert('\n[grid]\n![图片1](image1.jpg)\n![图片2](image2.jpg)\n[/grid]\n\n'),
+  codegroup: () => Editor.insert('\n::: code-group labels=[JavaScript, Python]\n```js\nconsole.log("Hi")\n```\n```python\nprint("Hi")\n```\n:::\n\n'),
   spoiler: () => Editor.wrap(':spoiler[', ']', '隐藏内容'),
   find: () => toggleFind(true),
   zen: () => toggleZen()
@@ -1239,6 +1313,10 @@ const SLASH = [
   { k: 'math', icon: 'i-math', name: '行内数学公式', desc: '$...$ KaTeX' },
   { k: 'mathblock', icon: 'i-math', name: '块级数学公式', desc: '$$...$$ KaTeX' },
   { k: 'mermaid', icon: 'i-mermaid', name: 'Mermaid 图表', desc: '```mermaid' },
+  { k: 'wikilink', icon: 'i-wikilink', name: '内部链接', desc: '[[slug|别名]]' },
+  { k: 'plantuml', icon: 'i-plantuml', name: 'PlantUML 图表', desc: '```plantuml' },
+  { k: 'grid', icon: 'i-grid', name: '图片画廊', desc: '[grid] … [/grid]' },
+  { k: 'codegroup', icon: 'i-codegroup', name: '代码组', desc: '::: code-group' },
   { k: 'admonition', icon: 'i-alert', name: '提示块（GitHub）', desc: '> [!TIP]' },
   { k: 'admonition-d', icon: 'i-alert', name: '提示块（Docusaurus）', desc: ':::tip' },
   { k: 'admonition-o', icon: 'i-alert', name: '提示块（Obsidian）', desc: '!!! note' },

@@ -68,6 +68,10 @@
   <symbol id="i-hash" viewBox="0 0 24 24"><path d="M4 9h16M4 15h16M10 3L8 21M16 3l-2 18"/></symbol>
   <symbol id="i-math" viewBox="0 0 24 24"><path d="M18 4H7l6 8-6 8h11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 20h6"/></symbol>
   <symbol id="i-mermaid" viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="14" y="15" width="7" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10 6.5h4a2 2 0 0 1 2 2v6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="i-wikilink" viewBox="0 0 24 24"><path d="M5 4h11a2 2 0 0 1 2 2v12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2V8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 8h6M9 12h6M9 16h3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+  <symbol id="i-plantuml" viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="14" y="15" width="7" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10 6.5h4a3 3 0 0 1 3 3v5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="14" y="3" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="3" y="14" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="14" y="14" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="i-codegroup" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3 9h18M7 5v4M12 5v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
 </svg>
 
 <div class="app" id="app">
@@ -344,9 +348,6 @@
           <button class="tb-btn" data-cmd="bold" title="粗体 (Ctrl+B)"><svg class="ico"><use href="#i-bold"/></svg></button>
           <button class="tb-btn" data-cmd="italic" title="斜体 (Ctrl+I)"><svg class="ico"><use href="#i-italic"/></svg></button>
           <button class="tb-btn" data-cmd="strike" title="删除线"><svg class="ico"><use href="#i-strike"/></svg></button>
-          <button class="tb-btn" data-cmd="mark" title="高亮 ==文本==">
-            <svg class="ico" viewBox="0 0 24 24"><path d="M4 20h16M6 15l6-11 6 11z"/></svg>
-          </button>
           <button class="tb-btn" data-cmd="inlinecode" title="行内代码 (Ctrl+`)"><svg class="ico"><use href="#i-code"/></svg></button>
         </div>
         <div class="tb-sep"></div>
@@ -373,6 +374,10 @@
           <button class="tb-btn" data-cmd="iframe" title="自定义 Iframe"><svg class="ico"><use href="#i-frame"/></svg></button>
           <button class="tb-btn" data-cmd="math" title="数学公式 KaTeX"><svg class="ico"><use href="#i-math"/></svg></button>
           <button class="tb-btn" data-cmd="mermaid" title="Mermaid 图表"><svg class="ico"><use href="#i-mermaid"/></svg></button>
+          <button class="tb-btn" data-cmd="wikilink" title="内部链接 [[slug|别名]]"><svg class="ico"><use href="#i-wikilink"/></svg></button>
+          <button class="tb-btn" data-cmd="plantuml" title="PlantUML 图表 ```plantuml"><svg class="ico"><use href="#i-plantuml"/></svg></button>
+          <button class="tb-btn" data-cmd="grid" title="图片画廊 [grid] … [/grid]"><svg class="ico"><use href="#i-grid"/></svg></button>
+          <button class="tb-btn" data-cmd="codegroup" title="代码组 ::: code-group"><svg class="ico"><use href="#i-codegroup"/></svg></button>
           <button class="tb-btn" data-cmd="admonition" title="提示块（GitHub / Docusaurus / Obsidian）"><svg class="ico"><use href="#i-alert"/></svg></button>
         </div>
         <div class="tb-sep"></div>
@@ -655,7 +660,10 @@
             <tr><td>仓库卡片</td><td><code>::github{repo="owner/name"}</code></td></tr>
             <tr><td>视频嵌入</td><td>直接粘贴 <code>&lt;iframe&gt;</code> 代码</td></tr>
             <tr><td>提示块</td><td><code>&gt; [!TIP]</code></td></tr>
-            <tr><td>高亮</td><td><code>==高亮文本==</code></td></tr>
+            <tr><td>内部链接</td><td><code>[[slug]]</code> / <code>[[slug|别名]]</code></td></tr>
+            <tr><td>图片画廊</td><td><code>[grid] … [/grid]</code></td></tr>
+            <tr><td>代码组</td><td><code>::: code-group labels=[…]</code></td></tr>
+            <tr><td>PlantUML</td><td><code>```plantuml</code></td></tr>
             <tr><td>任务列表</td><td><code>- [ ] / - [x]</code></td></tr>
             <tr><td>脚注</td><td><code>文字[^1]</code> + <code>[^1]: 注释</code></td></tr>
           </table>
