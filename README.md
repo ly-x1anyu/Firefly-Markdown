@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🪄 Firefly Markdown
+# Firefly Markdown
 
 **一款纯前端、零依赖、离线可用的静态博客 Markdown 博文生成器**
 
@@ -47,7 +47,7 @@ Firefly-Markdown 是一款**纯原生前端、零第三方依赖**的 Markdown �
 | `published` | date | 是 | 发布日期 |
 | `updated` | date | 否 | 更新日期，未设置则默认使用发布日期 |
 | `description` | string | 否 | 文章简短描述，显示在首页文章卡片上 |
-| `image` | string | 否 | 封面图片路径 |
+| `image` | string | 否 | 封面图片路径；随机图接口支持 `?id` 后缀让每篇文章加载不同封面 |
 | `tags` | string[] | 否 | 文章标签 |
 | `category` | string | 否 | 文章分类 |
 | `draft` | boolean | 否 | 是否为草稿，草稿不会对读者可见 |
@@ -64,7 +64,7 @@ Firefly-Markdown 是一款**纯原生前端、零第三方依赖**的 Markdown �
 
 此外还支持：
 
-- **封面图三种模式**：关闭 / 随机图 API（内置 6 个常用接口，可自定义）/ 自定义地址
+- **封面图三种模式**：关闭 / 随机图 API（内置 4 个 PHP 类接口，均支持 `?id` 让每篇文章加载不同封面，也可自定义地址）/ 自定义地址
 - **开源协议预设**：MIT、Apache-2.0、GPL、AGPL、LGPL、BSD、MPL、Unlicense、CC 系列等 14 种，选中自动填充名称与链接
 - **自定义字段**：主题扩展字段可自由增删，原样写入 FrontMatter
 - **时间精度切换**：仅日期 `2026-08-04` 或含时间 `2026-08-04 10:30:00`
@@ -75,7 +75,8 @@ Firefly-Markdown 是一款**纯原生前端、零第三方依赖**的 Markdown �
 
 自研零依赖编辑器内核，不引入任何第三方编辑器库：
 
-- **完整工具栏**：H1–H3、粗体、斜体、删除线、高亮、行内代码、引用、分割线、有序 / 无序 / 任务列表、链接、图片、表格、代码块、脚注
+- **完整工具栏**：H1–H3、粗体、斜体、删除线、高亮、行内代码、引用、分割线、有序 / 无序 / 任务列表、链接、图片、表格、代码块、脚注；同类功能（图表 / 链接 / 代码 / 列表）已合并为下拉分组按钮
+- **扩展语法工具栏**：内部链接、文章卡片、PlantUML、图片画廊、代码组、带行号代码块——均通过弹窗录入链接与内容（slug、别名、标题、图片地址、代码等），确认后插入对应 Markdown 语法，不再直接插入占位模板
 - **`/` 斜杠命令**：在行首输入 `/` 唤出 20 项快捷命令菜单，方向键选择、回车插入
 - **智能输入**：列表 / 引用自动续写、空条目自动结束、有序列表自动编号、选中文本按 `*` `(` `"` 等自动包裹
 - **行级操作**：`Alt+↑/↓` 移动整行、`Ctrl+D` 复制行、`Ctrl+Shift+K` 删除行、`Tab` / `Shift+Tab` 批量缩进
@@ -111,16 +112,23 @@ Firefly-Markdown 是一款**纯原生前端、零第三方依赖**的 Markdown �
 | GitHub 卡片 | `::github{repo="CuteLeaf/Firefly"}` | 数据由主题在前台从 GitHub API 动态获取 |
 | 视频嵌入 | 弹窗输入链接自动生成 iframe | 自动识别 B 站 BV 号 / av 号 / 分 P、YouTube watch / youtu.be / shorts |
 | 自定义 Iframe | 弹窗填写地址与宽高 | 可选 allowfullscreen |
-| 提示块 | `> [!NOTE]` `[!TIP]` `[!IMPORTANT]` `[!WARNING]` `[!CAUTION]` | GitHub 风格警示框 |
-| 提示块（Docusaurus） | `:::tip` `:::warning[自定义标题]` `:::` | 容器型，支持 `note/tip/info/warning/danger` |
+| 提示块 | `> [!NOTE]` `[!TIP]` `[!IMPORTANT]` `[!WARNING]` `[!CAUTION]` `[!DANGER]` `[!SUCCESS]` `[!EXAMPLE]` `[!QUESTION]` `[!BUG]` `[!FAILURE]` `[!QUOTE]` `[!ABSTRACT]` `[!INFO]` | GitHub / Obsidian 风格警示框，共 14 种类型 |
+| 提示块自定义标题 | `> [!NOTE] 阅读前须知` | 类型后接文字即为自定义标题，正文另起一行 |
+| 提示块（Docusaurus） | `:::tip` `:::warning[自定义标题]` `:::` | 容器型，支持上述全部类型 |
 | 提示块（Obsidian） | `!!! note "标题"` / `??? warning "标题"` | Python-Markdown 风格，`???` 为可折叠（默认收起） |
 | 数学公式（行内） | `$E=mc^2$` | 零依赖 KaTeX 子集渲染，支持 `^` `_` `\frac` `\sqrt` `\sum` `\int` `\begin{pmatrix}` 矩阵等 |
 | 数学公式（块级） | `$$ ... $$` | 居中显示，多行公式 |
 | Mermaid 图表 | ` ```mermaid ` 代码块 | 预览中以代码卡片展示，构建时由 Firefly 渲染为静态 SVG |
 | 内部链接（Wiki Link） | `[[slug]]` / `[[slug\|别名]]` / `[[#标题]]` | 生成 `/posts/{slug}/` 站内链接 |
+| 文章卡片 | `![[slug]]` / `![[slug\|标题]]` | Obsidian 嵌入语法，渲染为卡片式内链（标题 + 路径） |
 | PlantUML 图表 | ` ```plantuml ` 代码块 | 预览中以代码卡片展示，构建时由 Firefly 渲染为静态 SVG |
-| 图片画廊 | `[grid]` 列表图片 `[/grid]` | 多图自适应网格排列，支持图注 |
-| 代码组 | `::: code-group labels=[…]` 内含多个代码块 `:::` | 多语言代码块标签页切换（纯 CSS，无需 JS） |
+| 图片画廊 | `[grid]` 列表图片 `[/grid]` | 多图自适应网格排列，支持图注；可加列数 `[grid cols=3]`（1–6，窄屏自动降为 2 列） |
+| 封面随机图 id | 封面设置选「随机 API」后填写 `06` | 生成 `random.php?06`，使每篇文章加载不同封面（也可填 `id=06` 等自定义参数） |
+| 代码组 | `::: code-group labels=[…]` 内含多个代码块 `:::` | 多语言代码块标签页切换（纯 CSS，无需 JS）；未写 `labels` 时自动取子块的 `title` |
+| 代码块标题 | ` ```js title="app.js" ` | 标题显示在代码块头部，代码组中作为标签页名 |
+| 代码块行号 | ` ```js showLineNumbers ` | 左侧行号栏；`start=10` 指定起始行号，`noLineNumbers` 强制关闭 |
+| 代码块行标记 | ` ```js {1,3-5} ` | 自动开启行号并高亮标记行（行号变色 + 整行底色） |
+| 代码块自动换行 | ` ```js wrap ` | 长行折行显示；与行号互斥（折行后无法对齐） |
 | 任务列表 | `- [ ]` / `- [x]` | |
 | 脚注 | `正文[^1]` + `[^1]: 注释` | 自动生成脚注区与回跳链接 |
 

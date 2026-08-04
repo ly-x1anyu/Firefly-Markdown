@@ -7,7 +7,7 @@
 <meta name="description" content="Firefly Markdown —— 纯前端、零依赖、离线可用的 Astro-Firefly 主题博文生成器">
 <title>Firefly Markdown · 博文生成器</title>
 <link rel="stylesheet" href="styles.css">
-<link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+<link rel="icon" type="image/png" href="assets/favicon.png">
 </head>
 <body>
 
@@ -81,7 +81,7 @@
     <div class="topbar-left">
       <button class="icon-btn only-mobile" id="btnMobileMenu" title="配置面板"><svg class="ico"><use href="#i-settings"/></svg></button>
       <div class="brand">
-        <span class="brand-logo"><svg class="ico" width="22" height="22"><use href="#i-logo"/></svg></span>
+        <span class="brand-logo"><img src="assets/favicon.png" alt="Firefly" width="22" height="22"></span>
         <span class="brand-text">
           <b>Firefly Markdown</b>
           <i>Astro-Firefly 博文生成器</i>
@@ -205,17 +205,14 @@
             </div>
 
             <div class="field cover-random hidden">
-              <label for="f-cover-random">随机图接口</label>
+              <label for="f-cover-random">随机图接口（PHP 类，支持 ?id）</label>
               <select id="f-cover-random">
-                <option value="https://www.loliapi.com/acg/">LoliAPI · 二次元横图</option>
-                <option value="https://www.loliapi.com/acg/pc/">LoliAPI · 电脑壁纸</option>
-                <option value="https://www.loliapi.com/acg/pe/">LoliAPI · 手机壁纸</option>
-                <option value="https://api.dujin.org/bing/1920.php">Bing 每日壁纸</option>
-                <option value="https://picsum.photos/1200/600">Picsum · 随机摄影</option>
-                <option value="https://source.unsplash.com/random/1200x600">Unsplash · 随机图</option>
+                <option value="https://api.boxmoe.com/random.php">BoxMoe · 随机图（支持 ?id）</option>
                 <option value="__custom__">自定义接口地址…</option>
               </select>
-              <input type="url" id="f-cover-random-custom" class="hidden mt8" placeholder="https://example.com/api/random">
+              <input type="text" id="f-cover-id" class="mt8" placeholder="自定义封面 id，如 06">
+              <p class="hint">id 会拼到接口地址后，例如填 <code>06</code> → <code>random.php?06</code>，让每篇文章封面不同。也可填 <code>id=06</code> 等自定义参数。</p>
+              <input type="url" id="f-cover-random-custom" class="hidden mt8" placeholder="https://example.com/api/random.php">
             </div>
 
             <div class="field cover-custom hidden">
@@ -353,17 +350,36 @@
         <div class="tb-sep"></div>
         <div class="tb-group">
           <button class="tb-btn" data-cmd="quote" title="引用"><svg class="ico"><use href="#i-quote"/></svg></button>
-          <button class="tb-btn" data-cmd="ul" title="无序列表"><svg class="ico"><use href="#i-ul"/></svg></button>
-          <button class="tb-btn" data-cmd="ol" title="有序列表"><svg class="ico"><use href="#i-ol"/></svg></button>
-          <button class="tb-btn" data-cmd="task" title="任务列表"><svg class="ico"><use href="#i-task"/></svg></button>
+          <div class="tb-dropdown" data-menu="lists">
+            <button class="tb-btn has-text" title="列表"><svg class="ico"><use href="#i-ul"/></svg><span>列表</span></button>
+            <div class="tb-dropdown-menu">
+              <button class="tb-btn has-text" data-cmd="ul" title="无序列表"><svg class="ico"><use href="#i-ul"/></svg><span>无序</span></button>
+              <button class="tb-btn has-text" data-cmd="ol" title="有序列表"><svg class="ico"><use href="#i-ol"/></svg><span>有序</span></button>
+              <button class="tb-btn has-text" data-cmd="task" title="任务列表"><svg class="ico"><use href="#i-task"/></svg><span>任务</span></button>
+            </div>
+          </div>
           <button class="tb-btn" data-cmd="hr" title="分割线"><svg class="ico"><use href="#i-minus"/></svg></button>
         </div>
         <div class="tb-sep"></div>
         <div class="tb-group">
-          <button class="tb-btn" data-cmd="link" title="链接 (Ctrl+K)"><svg class="ico"><use href="#i-link"/></svg></button>
+          <div class="tb-dropdown" data-menu="links">
+            <button class="tb-btn has-text" title="链接"><svg class="ico"><use href="#i-link"/></svg><span>链接</span></button>
+            <div class="tb-dropdown-menu">
+              <button class="tb-btn has-text" data-cmd="link" title="外部链接 (Ctrl+K)"><svg class="ico"><use href="#i-link"/></svg><span>外部</span></button>
+              <button class="tb-btn has-text" data-cmd="wikilink" title="内部链接 [[slug|别名]]"><svg class="ico"><use href="#i-wikilink"/></svg><span>内部</span></button>
+              <button class="tb-btn has-text" data-cmd="wikicard" title="文章卡片 ![[slug|标题]]"><svg class="ico"><use href="#i-wikilink"/></svg><span>卡片</span></button>
+            </div>
+          </div>
           <button class="tb-btn" data-cmd="image" title="图片"><svg class="ico"><use href="#i-image"/></svg></button>
           <button class="tb-btn" data-cmd="table" title="表格"><svg class="ico"><use href="#i-table"/></svg></button>
-          <button class="tb-btn" data-cmd="codeblock" title="代码块"><svg class="ico"><use href="#i-terminal"/></svg></button>
+          <div class="tb-dropdown" data-menu="code">
+            <button class="tb-btn has-text" title="代码"><svg class="ico"><use href="#i-terminal"/></svg><span>代码</span></button>
+            <div class="tb-dropdown-menu">
+              <button class="tb-btn has-text" data-cmd="codeblock" title="代码块"><svg class="ico"><use href="#i-terminal"/></svg><span>代码块</span></button>
+              <button class="tb-btn has-text" data-cmd="codeln" title="代码块（行号） ```js showLineNumbers {2}"><svg class="ico"><use href="#i-code"/></svg><span>行号</span></button>
+              <button class="tb-btn has-text" data-cmd="codegroup" title="代码组 ::: code-group"><svg class="ico"><use href="#i-codegroup"/></svg><span>代码组</span></button>
+            </div>
+          </div>
           <button class="tb-btn" data-cmd="footnote" title="脚注"><svg class="ico"><use href="#i-footnote"/></svg></button>
         </div>
         <div class="tb-sep"></div>
@@ -373,11 +389,14 @@
           <button class="tb-btn" data-cmd="video" title="视频嵌入（B站 / YouTube）"><svg class="ico"><use href="#i-video"/></svg></button>
           <button class="tb-btn" data-cmd="iframe" title="自定义 Iframe"><svg class="ico"><use href="#i-frame"/></svg></button>
           <button class="tb-btn" data-cmd="math" title="数学公式 KaTeX"><svg class="ico"><use href="#i-math"/></svg></button>
-          <button class="tb-btn" data-cmd="mermaid" title="Mermaid 图表"><svg class="ico"><use href="#i-mermaid"/></svg></button>
-          <button class="tb-btn" data-cmd="wikilink" title="内部链接 [[slug|别名]]"><svg class="ico"><use href="#i-wikilink"/></svg></button>
-          <button class="tb-btn" data-cmd="plantuml" title="PlantUML 图表 ```plantuml"><svg class="ico"><use href="#i-plantuml"/></svg></button>
-          <button class="tb-btn" data-cmd="grid" title="图片画廊 [grid] … [/grid]"><svg class="ico"><use href="#i-grid"/></svg></button>
-          <button class="tb-btn" data-cmd="codegroup" title="代码组 ::: code-group"><svg class="ico"><use href="#i-codegroup"/></svg></button>
+          <div class="tb-dropdown" data-menu="charts">
+            <button class="tb-btn has-text" title="图表"><svg class="ico"><use href="#i-mermaid"/></svg><span>图表</span></button>
+            <div class="tb-dropdown-menu">
+              <button class="tb-btn has-text" data-cmd="mermaid" title="Mermaid 图表"><svg class="ico"><use href="#i-mermaid"/></svg><span>Mermaid</span></button>
+              <button class="tb-btn has-text" data-cmd="plantuml" title="PlantUML 图表 ```plantuml"><svg class="ico"><use href="#i-plantuml"/></svg><span>PlantUML</span></button>
+            </div>
+          </div>
+          <button class="tb-btn" data-cmd="grid" title="图片画廊 [grid cols=3] … [/grid]"><svg class="ico"><use href="#i-grid"/></svg></button>
           <button class="tb-btn" data-cmd="admonition" title="提示块（GitHub / Docusaurus / Obsidian）"><svg class="ico"><use href="#i-alert"/></svg></button>
         </div>
         <div class="tb-sep"></div>
@@ -586,6 +605,93 @@
   </div>
 </div>
 
+<div class="modal" id="modalWikilink" hidden>
+  <div class="modal-card">
+    <header><h3>插入内部链接</h3><button class="icon-btn" data-close><svg class="ico"><use href="#i-x"/></svg></button></header>
+    <div class="modal-body">
+      <div class="field"><label>文章 slug</label><input type="text" id="wkSlug" placeholder="如 my-post 或 2024/hello"></div>
+      <div class="field"><label>显示别名（可选）</label><input type="text" id="wkAlias" placeholder="留空则使用 slug 作为文字"></div>
+      <p class="hint">生成 <code>[[slug|别名]]</code>，构建时转为站内链接 <code>/posts/{slug}/</code>。</p>
+    </div>
+    <footer><button class="btn btn-ghost" data-close>取消</button><button class="btn btn-primary" id="wkOk">插入</button></footer>
+  </div>
+</div>
+
+<div class="modal" id="modalWikicard" hidden>
+  <div class="modal-card">
+    <header><h3>插入文章卡片</h3><button class="icon-btn" data-close><svg class="ico"><use href="#i-x"/></svg></button></header>
+    <div class="modal-body">
+      <div class="field"><label>文章 slug</label><input type="text" id="wcSlug" placeholder="如 my-post"></div>
+      <div class="field"><label>卡片标题（可选）</label><input type="text" id="wcTitle" placeholder="留空则使用 slug 作为标题"></div>
+      <p class="hint">生成 <code>![[slug|标题]]</code>，构建时渲染为带封面的文章卡片。</p>
+    </div>
+    <footer><button class="btn btn-ghost" data-close>取消</button><button class="btn btn-primary" id="wcOk">插入</button></footer>
+  </div>
+</div>
+
+<div class="modal" id="modalPlantuml" hidden>
+  <div class="modal-card">
+    <header><h3>插入 PlantUML 图表</h3><button class="icon-btn" data-close><svg class="ico"><use href="#i-x"/></svg></button></header>
+    <div class="modal-body">
+      <div class="field"><label>UML 源码</label>
+        <textarea id="puText" rows="8" placeholder="@startuml&#10;Alice -> Bob: 认证请求&#10;Bob --> Alice: 响应&#10;@enduml">@startuml
+Alice -> Bob: 认证请求
+Bob --> Alice: 响应
+@enduml</textarea>
+      </div>
+      <p class="hint">使用 <code>```plantuml</code> 代码块，构建时由 Firefly 渲染为静态 SVG。</p>
+    </div>
+    <footer><button class="btn btn-ghost" data-close>取消</button><button class="btn btn-primary" id="puOk">插入</button></footer>
+  </div>
+</div>
+
+<div class="modal" id="modalGrid" hidden>
+  <div class="modal-card">
+    <header><h3>插入图片画廊</h3><button class="icon-btn" data-close><svg class="ico"><use href="#i-x"/></svg></button></header>
+    <div class="modal-body">
+      <div class="field"><label>图片地址（每行一个，也支持 <code>![说明](url)</code>）</label>
+        <textarea id="gdUrls" rows="5" placeholder="https://example.com/a.jpg&#10;https://example.com/b.jpg&#10;![风景](https://example.com/c.jpg)"></textarea>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>列数（1–6，留空则自适应）</label><input type="number" id="gdCols" min="1" max="6" placeholder="3"></div>
+      </div>
+      <p class="hint">生成 <code>[grid cols=N] … [/grid]</code>，窄屏自动降列。</p>
+    </div>
+    <footer><button class="btn btn-ghost" data-close>取消</button><button class="btn btn-primary" id="gdOk">插入</button></footer>
+  </div>
+</div>
+
+<div class="modal" id="modalCodegroup" hidden>
+  <div class="modal-card">
+    <header><h3>插入代码组</h3><button class="icon-btn" data-close><svg class="ico"><use href="#i-x"/></svg></button></header>
+    <div class="modal-body">
+      <div id="cgTabs"></div>
+      <button class="btn btn-ghost btn-sm" id="cgAdd" type="button">+ 添加代码块</button>
+      <p class="hint">多个标签页代码块，纯 CSS 切换；不填标签则使用语言名。</p>
+    </div>
+    <footer><button class="btn btn-ghost" data-close>取消</button><button class="btn btn-primary" id="cgOk">插入</button></footer>
+  </div>
+</div>
+
+<div class="modal" id="modalCodeln" hidden>
+  <div class="modal-card">
+    <header><h3>插入代码块（带行号）</h3><button class="icon-btn" data-close><svg class="ico"><use href="#i-x"/></svg></button></header>
+    <div class="modal-body">
+      <div class="field-row">
+        <div class="field"><label>语言</label><input type="text" id="clLang" placeholder="js"></div>
+        <div class="field"><label>起始行号（可选）</label><input type="number" id="clStart" min="1" placeholder="1"></div>
+      </div>
+      <div class="field-row">
+        <label class="check"><input type="checkbox" id="clNumbers" checked><span>显示行号</span></label>
+        <label class="check"><input type="checkbox" id="clWrap"><span>长行折行</span></label>
+      </div>
+      <div class="field"><label>标记行（可选，如 <code>2</code> 或 <code>1,3-5</code>）</label><input type="text" id="clMarks" placeholder="2"></div>
+      <div class="field"><label>代码</label><textarea id="clCode" rows="6" placeholder="在此输入代码"></textarea></div>
+    </div>
+    <footer><button class="btn btn-ghost" data-close>取消</button><button class="btn btn-primary" id="clOk">插入</button></footer>
+  </div>
+</div>
+
 <div class="modal" id="modalAdmonition" hidden>
   <div class="modal-card">
     <header><h3>插入提示块</h3><button class="icon-btn" data-close><svg class="ico"><use href="#i-x"/></svg></button></header>
@@ -659,9 +765,16 @@
             <tr><td>剧透遮罩</td><td><code>:spoiler[隐藏内容]</code></td></tr>
             <tr><td>仓库卡片</td><td><code>::github{repo="owner/name"}</code></td></tr>
             <tr><td>视频嵌入</td><td>直接粘贴 <code>&lt;iframe&gt;</code> 代码</td></tr>
-            <tr><td>提示块</td><td><code>&gt; [!TIP]</code></td></tr>
+            <tr><td>提示块</td><td><code>&gt; [!TIP]</code>（14 种类型）</td></tr>
+            <tr><td>提示块自定义标题</td><td><code>&gt; [!NOTE] 我的标题</code></td></tr>
+            <tr><td>代码块标题</td><td><code>```js title="app.js"</code></td></tr>
+            <tr><td>代码块行号</td><td><code>```js showLineNumbers</code>，可加 <code>start=10</code></td></tr>
+            <tr><td>代码块行标记</td><td><code>```js {1,3-5}</code>（自动显示行号并高亮）</td></tr>
+            <tr><td>代码块自动换行</td><td><code>```js wrap</code></td></tr>
             <tr><td>内部链接</td><td><code>[[slug]]</code> / <code>[[slug|别名]]</code></td></tr>
-            <tr><td>图片画廊</td><td><code>[grid] … [/grid]</code></td></tr>
+            <tr><td>文章卡片</td><td><code>![[slug]]</code> / <code>![[slug|标题]]</code></td></tr>
+            <tr><td>图片画廊</td><td><code>[grid] … [/grid]</code>，可加 <code>cols=3</code></td></tr>
+            <tr><td>封面随机图 id</td><td>封面选「随机 API」后填 <code>06</code> → <code>random.php?06</code>，每篇不同</td></tr>
             <tr><td>代码组</td><td><code>::: code-group labels=[…]</code></td></tr>
             <tr><td>PlantUML</td><td><code>```plantuml</code></td></tr>
             <tr><td>任务列表</td><td><code>- [ ] / - [x]</code></td></tr>

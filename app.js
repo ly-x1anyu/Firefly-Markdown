@@ -301,8 +301,8 @@ const MD = (function () {
     s = s.replace(/\[([^\]]*)\]\(([^()\s]+(?:\([^()]*\)[^()\s]*)*)(?:\s+["']([^"']*)["'])?\)/g,
       (m, txt, url, title) => put(`<a href="${escapeAttr(safeUrl(unesc(url)))}"${title ? ` title="${q(title)}"` : ''}${/^https?:/i.test(url) ? ' target="_blank" rel="noopener"' : ''}>${inlineRaw(txt, ctx)}</a>`));
 
-    // 8.5) Wiki Link 内部链接 [[slug]] / [[slug|别名]] / [[#标题]] / [[slug#标题|别名]]
-    s = s.replace(/\[\[([^\]]+?)\]\]/g, (m, inner) => {
+    // 8.5) Wiki Link 内部链接 [[slug]] / [[slug|别名]] / [[#标题]] / [[slug#标题|别名]]；![[slug]] 渲染为文章卡片
+    s = s.replace(/(!?)\[\[([^\]]+?)\]\]/g, (m, bang, inner) => {
       let target = inner.trim(), alias = '';
       const bar = target.indexOf('|');
       if (bar >= 0) { alias = target.slice(bar + 1).trim(); target = target.slice(0, bar).trim(); }
@@ -312,6 +312,12 @@ const MD = (function () {
       let href, text;
       if (!slug) { href = heading || '#'; text = alias || heading.replace(/^#/, ''); }
       else { href = '/posts/' + slug.replace(/^\/+|\/+$/g, '') + '/' + heading; text = alias || slug.split('/').pop(); }
+      if (bang) {
+        return put(`<a href="${escapeAttr(href)}" class="wiki-card"><svg class="ico" aria-hidden="true"><use href="#i-wikilink"/></svg>` +
+          `<span class="wc-body"><span class="wc-title">${inlineRaw(text, ctx)}</span>` +
+          `<span class="wc-path">${escapeHtml(href)}</span></span>` +
+          `<span class="wc-tag">文章卡片</span></a>`);
+      }
       return put(`<a href="${escapeAttr(href)}" class="wiki-link"${/^https?:/i.test(href) ? ' target="_blank" rel="noopener"' : ''}>${inlineRaw(text, ctx)}</a>`);
     });
 
@@ -367,6 +373,7 @@ const MD = (function () {
       let m = RE.fence.exec(line);
       if (m) {
         const fence = m[1][0], len = m[1].length, lang = m[2] || '';
+        const meta = m[3] || '';
         const buf = []; i++;
         while (i < lines.length) {
           const cl = new RegExp('^ {0,3}' + (fence === '`' ? '`' : '~') + '{' + len + ',}\\s*$').test(lines[i]);
@@ -374,12 +381,13 @@ const MD = (function () {
           buf.push(lines[i]); i++;
         }
         const code = buf.join('\n');
+        const fm = parseFenceMeta(meta);
         if (lang === 'mermaid') {
           out += `<div class="mermaid-block"><div class="mermaid-head"><svg class="ico ico-sm"><use href="#i-mermaid"/></svg> Mermaid 图表</div><pre class="mermaid-code">${escapeHtml(code)}</pre><div class="mermaid-hint">构建时由 Firefly 渲染为静态 SVG</div></div>`;
         } else if (lang === 'plantuml') {
           out += `<div class="plantuml-block"><div class="mermaid-head"><svg class="ico ico-sm"><use href="#i-mermaid"/></svg> PlantUML 图表</div><pre class="plantuml-code">${escapeHtml(code)}</pre><div class="mermaid-hint">构建时由 Firefly 渲染为静态 SVG</div></div>`;
         } else {
-          out += `<pre><div class="code-head"><span>${escapeHtml(lang || 'text')}</span><span>${buf.length} 行</span></div><code class="lang-${escapeAttr(lang)}">${HL(code, lang)}</code></pre>`;
+          out += codeBlockHtml(code, lang, fm);
         }
         continue;
       }
@@ -444,8 +452,12 @@ const MD = (function () {
         continue;
       }
 
-      // 图片画廊 [grid] ... [/grid]
-      if (/^ {0,3}\[grid\]\s*$/i.test(line)) {
+      // 图片画廊 [grid] / [grid cols=3] / [grid 3] ... [/grid]
+      const mGrid = /^ {0,3}\[grid((?:\s+[^\]]*)?)\]\s*$/i.exec(line);
+      if (mGrid) {
+        const gArg = (mGrid[1] || '').trim();
+        const gc = /(?:cols?|columns)\s*=\s*(\d)/i.exec(gArg) || /^(\d)$/.exec(gArg);
+        const cols = gc ? Math.min(6, Math.max(1, +gc[1])) : 0;
         const buf = []; i++;
         while (i < lines.length && !/^ {0,3}\[\/grid\]\s*$/i.test(lines[i])) { buf.push(lines[i]); i++; }
         if (i < lines.length) i++;
@@ -458,7 +470,7 @@ const MD = (function () {
           }
           return `<div class="grid-item">${inline(l, ctx)}</div>`;
         }).join('');
-        out += `<div class="img-grid">${items}</div>`;
+        out += `<div class="img-grid${cols ? ' cols-' + cols : ''}">${items}</div>`;
         continue;
       }
 
@@ -471,12 +483,13 @@ const MD = (function () {
           const fm = RE.fence.exec(lines[i]);
           if (fm) {
             const fence = fm[1][0], len = fm[1].length, lang = fm[2] || '';
+            const meta = fm[3] || '';
             const cbuf = []; i++;
             while (i < lines.length) {
               if (new RegExp('^ {0,3}' + (fence === '`' ? '`' : '~') + '{' + len + ',}\\s*$').test(lines[i])) { i++; break; }
               cbuf.push(lines[i]); i++;
             }
-            blocks.push({ lang, code: cbuf.join('\n') });
+            blocks.push({ lang, code: cbuf.join('\n'), meta });
           } else { i++; }
         }
         if (i < lines.length) i++;
@@ -518,12 +531,16 @@ const MD = (function () {
           buf.push(q ? q[1] : lines[i].trim());
           i++;
         }
-        const adm = /^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(.*)$/i.exec(buf[0] || '');
+        const adm = /^\s*\[!([a-z0-9-]+)\]\s*(.*)$/i.exec(buf[0] || '');
         if (adm) {
-          const type = adm[1].toUpperCase();
-          const rest = [adm[2]].concat(buf.slice(1)).filter((v, k) => k > 0 || v !== '');
-          const labels = { NOTE: '注释', TIP: '提示', IMPORTANT: '重要', WARNING: '警告', CAUTION: '注意' };
-          out += `<div class="admonition adm-${type.toLowerCase()}"><div class="adm-title">${type} · ${labels[type]}</div>${parseBlocks(rest, ctx)}</div>`;
+          const type = adm[1].toLowerCase();
+          const custom = (adm[2] || '').trim();
+          const ghLabels = { note:'注释', tip:'提示', info:'信息', important:'重要', warning:'警告', caution:'注意', danger:'危险', success:'成功', failure:'失败', bug:'缺陷', question:'疑问', quote:'引用', abstract:'摘要', example:'示例' };
+          // 已知类型沿用 “TYPE · 中文” 标题；未知类型交给 admBlock 自行回退
+          const defTitle = ghLabels[type] ? (type.toUpperCase() + ' · ' + ghLabels[type]) : '';
+          const title = custom || defTitle;
+          const rest = buf.slice(1);
+          out += admBlock(type, title, rest.join('\n'), ctx, false);
         } else {
           out += `<blockquote>${parseBlocks(buf, ctx)}</blockquote>`;
         }
@@ -604,6 +621,63 @@ const MD = (function () {
       return `<details class="admonition adm-${escapeHtml(t)} adm-collapse${expanded ? ' open' : ''}"><summary class="adm-title">${escapeHtml(title)}</summary>${inner}</details>`;
     }
     return `<div class="admonition adm-${escapeHtml(t)}"><div class="adm-title">${escapeHtml(title)}</div>${inner}</div>`;
+  }
+  // 把 "1,3-5" 解析成行号集合
+  function parseLineMarks(spec) {
+    const set = new Set();
+    (spec || '').split(',').forEach(part => {
+      const p = part.trim();
+      if (!p) return;
+      const r = /^(\d+)\s*-\s*(\d+)$/.exec(p);
+      if (r) {
+        let a = +r[1], b = +r[2];
+        if (a > b) { const t = a; a = b; b = t; }
+        for (let n = a; n <= b && n - a < 2000; n++) set.add(n);
+      } else if (/^\d+$/.test(p)) set.add(+p);
+    });
+    return set;
+  }
+  // 解析代码块 fence 元信息：title="…" / {行标记} / wrap / showLineNumbers / start=N
+  function parseFenceMeta(s) {
+    const meta = (s || '').trim();
+    const empty = { title: '', markers: '', marks: new Set(), wrap: false, lineNumbers: false, start: 1, hint: '' };
+    if (!meta) return empty;
+    const tM = meta.match(/title=["']([^"']*)["']/i);
+    const title = tM ? tM[1] : '';
+    const mkr = meta.match(/\{([^{}]*)\}/);
+    const markers = mkr ? mkr[1].trim() : '';
+    const marks = parseLineMarks(markers);
+    const wrap = /\bwrap\b/i.test(meta);
+    const sM = meta.match(/\b(?:startLineNumber|start)=(\d+)/i);
+    const start = sM ? Math.max(1, +sM[1]) : 1;
+    const wantLn = /\b(?:showLineNumbers|lineNumbers|numbers)\b/i.test(meta);
+    const noLn = /\b(?:noLineNumbers|hideLineNumbers)\b/i.test(meta);
+    // 自动换行时行号无法与折行对齐，故与行号互斥
+    const lineNumbers = !noLn && !wrap && (wantLn || marks.size > 0);
+    const parts = [];
+    if (markers && !lineNumbers) parts.push('行标记 {' + markers + '}');
+    if (wrap) parts.push('自动换行');
+    return { title, markers, marks, wrap, lineNumbers, start, hint: parts.join(' · ') };
+  }
+  // 统一渲染代码块（含行号栏与标记行）
+  function codeBlockHtml(code, lang, fm) {
+    const rows = code.split('\n');
+    const cls = [];
+    if (fm.wrap) cls.push('code-wrap');
+    if (fm.lineNumbers) cls.push('has-ln');
+    const headLang = escapeHtml(lang || 'text') + (fm.title ? ' · ' + escapeHtml(fm.title) : '');
+    const head = `<div class="code-head"><span>${headLang}</span><span>${rows.length} 行</span></div>`;
+    const codeEl = `<code class="lang-${escapeAttr(lang)}">${HL(code, lang)}</code>`;
+    let body = codeEl;
+    if (fm.lineNumbers) {
+      const nums = rows.map((_, idx) => {
+        const no = fm.start + idx;
+        return `<span class="ln${fm.marks.has(no) ? ' ln-mark' : ''}">${no}</span>`;
+      }).join('');
+      body = `<div class="code-body"><span class="line-nums" aria-hidden="true">${nums}</span>${codeEl}</div>`;
+    }
+    const foot = fm.hint ? `<div class="code-meta">${escapeHtml(fm.hint)}</div>` : '';
+    return `<pre${cls.length ? ` class="${cls.join(' ')}"` : ''}>${head}${body}${foot}</pre>`;
   }
   function splitRow(row) {
     let s = row.trim().replace(/^\|/, '').replace(/\|$/, '');
@@ -688,16 +762,14 @@ const MD = (function () {
   // 代码组：将多个代码块渲染为带标签页的切换容器（纯 CSS 切换，无需 JS）
   function renderCodeGroup(blocks, labels, ctx) {
     const gid = ctx.uid('cg');
-    const labelFor = (b, i) => escapeHtml(labels[i] || b.lang || ('代码 ' + (i + 1)));
+    const metas = blocks.map(b => parseFenceMeta(b.meta || ''));
+    const labelFor = (b, i) => escapeHtml(labels[i] || metas[i].title || b.lang || ('代码 ' + (i + 1)));
     const radios = blocks.map((b, i) =>
       `<input class="cg-radio" type="radio" name="${escapeAttr(gid)}" id="${escapeAttr(gid)}-${i}"${i === 0 ? ' checked' : ''}>`).join('');
     const tabbar = blocks.map((b, i) =>
       `<label class="cg-tab" for="${escapeAttr(gid)}-${i}">${labelFor(b, i)}</label>`).join('');
-    const panels = blocks.map(b => {
-      const lang = b.lang || 'text';
-      const n = b.code.split('\n').length;
-      return `<div class="cg-panel"><pre><div class="code-head"><span>${escapeHtml(lang)}</span><span>${n} 行</span></div><code class="lang-${escapeAttr(lang)}">${HL(b.code, lang)}</code></pre></div>`;
-    }).join('');
+    const panels = blocks.map((b, i) =>
+      `<div class="cg-panel">${codeBlockHtml(b.code, b.lang || 'text', metas[i])}</div>`).join('');
     return `<div class="code-group">${radios}<div class="cg-tabs">${tabbar}</div><div class="cg-panels">${panels}</div></div>`;
   }
 
@@ -727,7 +799,7 @@ const MD = (function () {
 const DEFAULT_META = () => ({
   title: '', published: toLocalInput(new Date()), updated: '', withTime: false,
   description: '', slug: '', author: '', lang: '',
-  coverMode: 'none', coverRandom: 'https://www.loliapi.com/acg/', coverRandomCustom: '', coverUrl: '',
+  coverMode: 'none', coverRandom: 'https://api.boxmoe.com/random.php', coverId: '', coverRandomCustom: '', coverUrl: '',
   category: '', tags: [],
   draft: false, pinned: false, comment: true,
   licensePreset: '', licenseName: '', licenseUrl: '', sourceLink: '',
@@ -758,8 +830,8 @@ const SAMPLE = `# 欢迎使用 Firefly Markdown
 - [x] 内置 Markdown 编辑器
 - [ ] 写一篇真正的文章
 
-\`\`\`js
-// 代码块自带语法高亮
+\`\`\`js title="hello.js" {2}
+// 代码块自带语法高亮，可写 title="文件名" 与行标记 {2}
 const hello = (name) => \`Hello, \${name}!\`;
 console.log(hello('Firefly'));
 \`\`\`
@@ -879,7 +951,14 @@ function yamlValue(v) {
 
 function coverValue(meta) {
   if (meta.coverMode === 'random') {
-    return meta.coverRandom === '__custom__' ? meta.coverRandomCustom.trim() : meta.coverRandom;
+    const base = meta.coverRandom === '__custom__' ? meta.coverRandomCustom.trim() : meta.coverRandom;
+    if (!base) return '';
+    const id = (meta.coverId || '').trim();
+    if (id) {
+      const sep = base.indexOf('?') >= 0 ? (base.endsWith('?') ? '' : '&') : '?';
+      return base + sep + id;
+    }
+    return base;
   }
   if (meta.coverMode === 'custom') return meta.coverUrl.trim();
   return '';
@@ -1018,9 +1097,18 @@ function parseMarkdown(text) {
 
     const img = T('image');
     if (img) {
-      const opts = $$('#f-cover-random option').map(o => o.value);
-      if (opts.indexOf(img) >= 0) { meta.coverMode = 'random'; meta.coverRandom = img; }
-      else if (/^https?:\/\/[^\s]*(api|random|acg|bing|source|picsum)/i.test(img)) { meta.coverMode = 'random'; meta.coverRandom = '__custom__'; meta.coverRandomCustom = img; }
+      // 预设均为 PHP 类随机图接口，可在地址后追加 ?id 区分不同文章封面
+      const opts = $$('#f-cover-random option').map(o => o.value).filter(v => v && v !== '__custom__');
+      let matched = null, mid = '';
+      for (const o of opts) {
+        if (img === o) { matched = o; mid = ''; break; }
+        const q = o.indexOf('?');
+        const base = q >= 0 ? o.slice(0, q) : o;
+        const m = new RegExp('^' + base.replace(/[.?*+^${}()|[\]\\]/g, '\\$&') + '\\?(.+)$').exec(img);
+        if (m) { matched = o; mid = m[1]; break; }
+      }
+      if (matched) { meta.coverMode = 'random'; meta.coverRandom = matched; meta.coverId = mid; }
+      else if (/^https?:\/\//i.test(img) && /(api|random|acg|php)/i.test(img)) { meta.coverMode = 'random'; meta.coverRandom = '__custom__'; meta.coverRandomCustom = img; }
       else { meta.coverMode = 'custom'; meta.coverUrl = img; }
     }
     Object.keys(raw).forEach(k => {
@@ -1180,20 +1268,42 @@ const CMD = {
   mathblock: () => Editor.insert('\n$$\n' + (Editor.sel().t || 'e^{i\\pi} + 1 = 0') + '\n$$\n\n'),
   math: () => openModal('#modalMath', () => { $('#mathTex').value = 'e^{i\\pi} + 1 = 0'; $$('#mathMode .seg-item').forEach(x => x.classList.toggle('active', x.dataset.m === 'inline')); $('#mathTex').focus(); }),
   mermaid: () => openModal('#modalMermaid', () => { $('#mmText').value = 'graph TD\n  A[开始] --> B{条件检查}\n  B -->|是| C[处理步骤 1]\n  B -->|否| D[处理步骤 2]\n  C --> E[结束]\n  D --> E'; $('#mmText').focus(); }),
-  wikilink: () => Editor.wrap('[[', ']]', 'slug|别名'),
-  plantuml: () => Editor.insert('\n```plantuml\n@startuml\nAlice -> Bob: 认证请求\nBob --> Alice: 响应\n@enduml\n```\n\n'),
-  grid: () => Editor.insert('\n[grid]\n![图片1](image1.jpg)\n![图片2](image2.jpg)\n[/grid]\n\n'),
-  codegroup: () => Editor.insert('\n::: code-group labels=[JavaScript, Python]\n```js\nconsole.log("Hi")\n```\n```python\nprint("Hi")\n```\n:::\n\n'),
+  wikilink: () => openModal('#modalWikilink', () => { $('#wkSlug').value = ''; $('#wkAlias').value = Editor.sel().t || ''; $('#wkSlug').focus(); }),
+  wikicard: () => openModal('#modalWikicard', () => { $('#wcSlug').value = ''; $('#wcTitle').value = Editor.sel().t || ''; $('#wcSlug').focus(); }),
+  codeln: () => openModal('#modalCodeln', () => { $('#clLang').value = 'js'; $('#clStart').value = ''; $('#clNumbers').checked = true; $('#clWrap').checked = false; $('#clMarks').value = ''; $('#clCode').value = Editor.sel().t || ''; $('#clLang').focus(); }),
+  plantuml: () => openModal('#modalPlantuml', () => { $('#puText').value = '@startuml\nAlice -> Bob: 认证请求\nBob --> Alice: 响应\n@enduml'; $('#puText').focus(); }),
+  grid: () => openModal('#modalGrid', () => { $('#gdUrls').value = ''; $('#gdCols').value = ''; $('#gdUrls').focus(); }),
+  codegroup: () => openModal('#modalCodegroup', () => { $('#cgTabs').innerHTML = ''; cgAddRow('js', 'JavaScript', 'console.log("Hi");'); $('#cgAdd').focus(); }),
   spoiler: () => Editor.wrap(':spoiler[', ']', '隐藏内容'),
   find: () => toggleFind(true),
   zen: () => toggleZen()
 };
 
 $('#toolbar').addEventListener('click', e => {
+  const dropTrigger = e.target.closest('.tb-dropdown > .tb-btn');
+  if (dropTrigger) {
+    const parent = dropTrigger.parentElement;
+    const willOpen = !parent.classList.contains('open');
+    $$('.tb-dropdown').forEach(d => d.classList.remove('open'));
+    if (willOpen) parent.classList.add('open');
+    return;
+  }
+  const menuItem = e.target.closest('.tb-dropdown-menu [data-cmd]');
+  if (menuItem) {
+    $$('.tb-dropdown').forEach(d => d.classList.remove('open'));
+    const fn = CMD[menuItem.dataset.cmd];
+    if (fn) fn();
+    return;
+  }
   const btn = e.target.closest('[data-cmd]');
   if (!btn) return;
   const fn = CMD[btn.dataset.cmd];
   if (fn) fn();
+});
+
+// 点击外部关闭工具栏下拉分组
+document.addEventListener('click', e => {
+  if (!e.target.closest('.tb-dropdown')) $$('.tb-dropdown').forEach(d => d.classList.remove('open'));
 });
 
 /* ---------- 键盘 ---------- */
@@ -1314,8 +1424,10 @@ const SLASH = [
   { k: 'mathblock', icon: 'i-math', name: '块级数学公式', desc: '$$...$$ KaTeX' },
   { k: 'mermaid', icon: 'i-mermaid', name: 'Mermaid 图表', desc: '```mermaid' },
   { k: 'wikilink', icon: 'i-wikilink', name: '内部链接', desc: '[[slug|别名]]' },
+  { k: 'wikicard', icon: 'i-wikilink', name: '文章卡片', desc: '![[slug]] 卡片式内链' },
+  { k: 'codeln', icon: 'i-code', name: '代码块（行号）', desc: '```js showLineNumbers {2}' },
   { k: 'plantuml', icon: 'i-plantuml', name: 'PlantUML 图表', desc: '```plantuml' },
-  { k: 'grid', icon: 'i-grid', name: '图片画廊', desc: '[grid] … [/grid]' },
+  { k: 'grid', icon: 'i-grid', name: '图片画廊', desc: '[grid cols=3] … [/grid]' },
   { k: 'codegroup', icon: 'i-codegroup', name: '代码组', desc: '::: code-group' },
   { k: 'admonition', icon: 'i-alert', name: '提示块（GitHub）', desc: '> [!TIP]' },
   { k: 'admonition-d', icon: 'i-alert', name: '提示块（Docusaurus）', desc: ':::tip' },
@@ -1657,6 +1769,7 @@ bindInput('#f-lang', 'lang', 'change');
 bindInput('#f-category', 'category');
 bindInput('#f-cover-url', 'coverUrl');
 bindInput('#f-cover-random', 'coverRandom', 'change');
+bindInput('#f-cover-id', 'coverId');
 bindInput('#f-cover-random-custom', 'coverRandomCustom');
 bindInput('#f-license-name', 'licenseName');
 bindInput('#f-license-url', 'licenseUrl');
@@ -1716,6 +1829,7 @@ function updateCoverUI() {
   $$('#coverMode .seg-item').forEach(b => b.classList.toggle('active', b.dataset.mode === m.coverMode));
   $('.cover-random').classList.toggle('hidden', m.coverMode !== 'random');
   $('.cover-custom').classList.toggle('hidden', m.coverMode !== 'custom');
+  $('#f-cover-id').classList.toggle('hidden', m.coverMode !== 'random');
   $('#f-cover-random-custom').classList.toggle('hidden', m.coverRandom !== '__custom__');
   const url = coverValue(m);
   const box = $('#coverPreview');
@@ -1824,6 +1938,7 @@ function fillForm() {
   $('#f-lang').value = m.lang;
   $('#f-cover-random').value = m.coverRandom;
   $('#f-cover-random-custom').value = m.coverRandomCustom;
+  $('#f-cover-id').value = m.coverId;
   $('#f-cover-url').value = m.coverUrl;
   $('#f-category').value = m.category;
   $('#f-draft').checked = m.draft;
@@ -1988,6 +2103,83 @@ $('#mmOk').addEventListener('click', () => {
   if (!code) { toast('请输入图表定义', 'err'); return; }
   closeModal('#modalMermaid');
   Editor.insert('\n```mermaid\n' + code + '\n```\n\n');
+});
+/* 内部链接 */
+$('#wkOk').addEventListener('click', () => {
+  const slug = $('#wkSlug').value.trim();
+  if (!slug) { toast('请输入文章 slug', 'err'); return; }
+  const alias = $('#wkAlias').value.trim();
+  closeModal('#modalWikilink');
+  Editor.insert(`[[${slug}${alias ? '|' + alias : ''}]]`);
+});
+/* 文章卡片 */
+$('#wcOk').addEventListener('click', () => {
+  const slug = $('#wcSlug').value.trim();
+  if (!slug) { toast('请输入文章 slug', 'err'); return; }
+  const title = $('#wcTitle').value.trim();
+  closeModal('#modalWikicard');
+  Editor.insert(`![[${slug}${title ? '|' + title : ''}]]`);
+});
+/* PlantUML */
+$('#puOk').addEventListener('click', () => {
+  const code = ($('#puText').value || '').trim();
+  if (!code) { toast('请输入图表定义', 'err'); return; }
+  closeModal('#modalPlantuml');
+  Editor.insert('\n```plantuml\n' + code + '\n```\n\n');
+});
+/* 图片画廊 */
+$('#gdOk').addEventListener('click', () => {
+  const lines = ($('#gdUrls').value || '').split('\n').map(s => s.trim()).filter(Boolean);
+  if (!lines.length) { toast('请至少填写一个图片地址', 'err'); return; }
+  const cols = clamp(parseInt($('#gdCols').value, 10) || 0, 0, 6);
+  const items = lines.map(l => {
+    const m = /^!\[([^\]]*)\]\(([^)]+)\)$/.exec(l);
+    return m ? `![${m[1]}](${m[2]})` : `![image](${l})`;
+  }).join('\n');
+  closeModal('#modalGrid');
+  Editor.insert('\n[grid' + (cols ? ' cols=' + cols : '') + ']\n' + items + '\n[/grid]\n\n');
+});
+/* 代码组：动态标签页 */
+function cgAddRow(lang, label, code) {
+  const row = document.createElement('div');
+  row.className = 'cg-row';
+  row.innerHTML = `<div class="cg-row-head">
+      <input class="cg-lang" placeholder="语言，如 js" value="${escapeAttr(lang || '')}">
+      <input class="cg-label" placeholder="标签（可选）" value="${escapeAttr(label || '')}">
+      <button class="cg-del icon-btn" type="button" title="删除"><svg class="ico ico-sm"><use href="#i-x"/></svg></button>
+    </div>
+    <textarea class="cg-code" rows="3" placeholder="代码…">${escapeHtml(code || '')}</textarea>`;
+  row.querySelector('.cg-del').addEventListener('click', () => row.remove());
+  $('#cgTabs').appendChild(row);
+}
+$('#cgAdd').addEventListener('click', () => cgAddRow('', '', ''));
+$('#cgOk').addEventListener('click', () => {
+  const rows = $$('#cgTabs .cg-row');
+  const blocks = [], labels = [];
+  rows.forEach(r => {
+    const lang = r.querySelector('.cg-lang').value.trim();
+    const label = r.querySelector('.cg-label').value.trim();
+    const code = r.querySelector('.cg-code').value;
+    if (!code.trim()) return;
+    blocks.push('```' + (lang || 'text') + '\n' + code.replace(/\n$/, '') + '\n```');
+    labels.push(label || lang || '代码');
+  });
+  if (!blocks.length) { toast('请至少填写一个代码块', 'err'); return; }
+  closeModal('#modalCodegroup');
+  Editor.insert('\n::: code-group labels=[' + labels.join(', ') + ']\n' + blocks.join('\n') + '\n:::\n\n');
+});
+/* 代码块（行号） */
+$('#clOk').addEventListener('click', () => {
+  const lang = ($('#clLang').value || 'js').trim() || 'js';
+  const code = ($('#clCode').value || '').replace(/\n$/, '');
+  if (!code.trim()) { toast('请输入代码', 'err'); return; }
+  const parts = [lang];
+  if ($('#clNumbers').checked) parts.push('showLineNumbers');
+  if ($('#clStart').value.trim()) parts.push('start=' + parseInt($('#clStart').value, 10));
+  if ($('#clMarks').value.trim()) parts.push('{' + $('#clMarks').value.trim() + '}');
+  if ($('#clWrap').checked) parts.push('wrap');
+  closeModal('#modalCodeln');
+  Editor.insert('\n```' + parts.join(' ') + '\n' + code + '\n```\n\n');
 });
 /* 确认框 */
 let confirmCb = null;
