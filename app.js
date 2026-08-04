@@ -802,6 +802,7 @@ const DEFAULT_META = () => ({
   coverMode: 'none', coverRandom: 'https://api.boxmoe.com/random.php', coverId: '', coverRandomCustom: '', coverUrl: '',
   category: '', tags: [],
   draft: false, pinned: false, comment: true,
+  slugAsName: false,
   licensePreset: '', licenseName: '', licenseUrl: '', sourceLink: '',
   password: '', passwordHint: '',
   extras: []
@@ -1786,6 +1787,7 @@ bindInput('#f-published', 'published', 'change');
 bindInput('#f-updated', 'updated', 'change');
 bindInput('#f-description', 'description');
 bindInput('#f-slug', 'slug');
+bindInput('#f-slug-as-name', 'slugAsName', 'change');
 bindInput('#f-author', 'author');
 bindInput('#f-lang', 'lang', 'change');
 bindInput('#f-category', 'category');
@@ -1956,6 +1958,7 @@ function fillForm() {
   $('#f-description').value = m.description;
   $('#descCount').textContent = m.description.length;
   $('#f-slug').value = m.slug;
+  $('#f-slug-as-name').checked = !!m.slugAsName;
   $('#f-author').value = m.author;
   $('#f-lang').value = m.lang;
   $('#f-cover-random').value = m.coverRandom;
@@ -2311,7 +2314,11 @@ $('#docList').addEventListener('click', e => {
  * 11. 导入 / 导出 / 复制 / 重置
  * ========================================================================== */
 function downloadMd() {
-  const name = (state.meta.slug.trim() || slugify(state.meta.title) || 'untitled')
+  // 默认用「标题」作为导出文件名；开启 slugAsName 后用 slug（兜底回退到标题）
+  const titleSlug = slugify(state.meta.title) || 'untitled';
+  const name = (state.meta.slugAsName
+    ? (state.meta.slug.trim() || titleSlug)
+    : titleSlug)
     .replace(/[\\/:*?"<>|]/g, '-').slice(0, 80);
   const blob = new Blob(['\uFEFF' + buildFullDoc()], { type: 'text/markdown;charset=utf-8' });
   const a = document.createElement('a');
@@ -2321,7 +2328,7 @@ function downloadMd() {
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
 $('#btnExport').addEventListener('click', () => {
-  if (!state.meta.title.trim()) { toast('请先填写文章标题', 'err'); $('#f-title').focus(); return; }
+  if (!state.meta.title.trim() && !state.meta.slug.trim()) { toast('请先填写文章标题或 slug', 'err'); $('#f-title').focus(); return; }
   downloadMd(); toast('已导出 Markdown 文件', 'ok');
 });
 
