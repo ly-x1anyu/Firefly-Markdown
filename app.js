@@ -1279,6 +1279,25 @@ const CMD = {
   zen: () => toggleZen()
 };
 
+// 移动端将下拉菜单锚定到视口右侧，避免触发按钮在可滚动工具栏右缘时菜单溢出
+function fixDropdownPositions() {
+  const mobile = window.innerWidth <= 760;
+  const tbBottom = mobile ? Math.round(document.getElementById('toolbar').getBoundingClientRect().bottom) : 0;
+  $$('.tb-dropdown').forEach(dd => {
+    const menu = dd.querySelector('.tb-dropdown-menu');
+    if (!menu) return;
+    if (mobile && dd.classList.contains('open')) {
+      menu.style.position = 'fixed';
+      menu.style.top = (tbBottom + 4) + 'px';
+      menu.style.left = 'auto';
+      menu.style.right = '8px';
+      menu.style.zIndex = '300';
+    } else {
+      menu.style.position = ''; menu.style.top = ''; menu.style.left = ''; menu.style.right = ''; menu.style.zIndex = '';
+    }
+  });
+}
+
 $('#toolbar').addEventListener('click', e => {
   const dropTrigger = e.target.closest('.tb-dropdown > .tb-btn');
   if (dropTrigger) {
@@ -1286,11 +1305,13 @@ $('#toolbar').addEventListener('click', e => {
     const willOpen = !parent.classList.contains('open');
     $$('.tb-dropdown').forEach(d => d.classList.remove('open'));
     if (willOpen) parent.classList.add('open');
+    fixDropdownPositions();
     return;
   }
   const menuItem = e.target.closest('.tb-dropdown-menu [data-cmd]');
   if (menuItem) {
     $$('.tb-dropdown').forEach(d => d.classList.remove('open'));
+    fixDropdownPositions();
     const fn = CMD[menuItem.dataset.cmd];
     if (fn) fn();
     return;
@@ -1303,8 +1324,9 @@ $('#toolbar').addEventListener('click', e => {
 
 // 点击外部关闭工具栏下拉分组
 document.addEventListener('click', e => {
-  if (!e.target.closest('.tb-dropdown')) $$('.tb-dropdown').forEach(d => d.classList.remove('open'));
+  if (!e.target.closest('.tb-dropdown')) { $$('.tb-dropdown').forEach(d => d.classList.remove('open')); fixDropdownPositions(); }
 });
+window.addEventListener('resize', debounce(fixDropdownPositions, 120));
 
 /* ---------- 键盘 ---------- */
 ed.addEventListener('keydown', e => {
