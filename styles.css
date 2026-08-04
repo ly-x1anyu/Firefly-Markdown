@@ -772,16 +772,24 @@ kbd { font-size: 11px; padding: 2px 6px; border-radius: 5px; background: var(--b
   .mt-item .ico { width: 20px; height: 20px; }
 
   .gutter { display: none; }
-  #editor { padding: 14px 14px 45vh; font-size: 15px; }
+  #editor { padding: 12px 14px calc(45vh + 80px); font-size: 15px; }
   .pv-pane { padding: 18px 16px 60px; }
+
+  /* 手机端工具栏改为一行可横向滚动，避免换行挤占编辑区 */
+  .editor-toolbar {
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none;
+    gap: 1px 2px; padding: 5px 8px;
+  }
+  .editor-toolbar::-webkit-scrollbar { display: none; }
+  .tb-btn { width: 32px; height: 32px; }
+  .tb-sep { height: 16px; margin: 0 4px; }
   .markdown-body { font-size: 15.5px; }
   .field-row { grid-template-columns: 1fr; }
   .help-cols { grid-template-columns: 1fr; gap: 18px; }
   .modal { padding: 12px; align-items: flex-end; }
   .modal-card { max-height: 82vh; border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
   .toast-host { bottom: 74px; }
-  .tb-btn { width: 34px; height: 34px; }
-  .statusbar { gap: 10px; padding: 0 10px; overflow-x: auto; scrollbar-width: none; }
+  .statusbar { height: 24px; font-size: 11px; gap: 10px; padding: 0 10px; overflow-x: auto; scrollbar-width: none; }
   .statusbar::-webkit-scrollbar { display: none; }
 }
 
