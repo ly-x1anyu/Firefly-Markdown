@@ -2275,11 +2275,33 @@ $('#docList').addEventListener('click', e => {
     }
   }
   if (del) {
-    const d = docs.find(x => x.id === del.dataset.del);
+    const id = del.dataset.del;
+    const d = docs.find(x => x.id === id);
     confirmBox('删除文章', `确定删除「${d ? d.name : ''}」？此操作不可恢复。`, () => {
-      const list = Store.docs().filter(x => x.id !== del.dataset.del);
+      const list = Store.docs().filter(x => x.id !== id);
       Store.saveDocs(list);
-      if (state.docId === del.dataset.del) { state.docId = null; persistDoc(true); }
+      if (state.docId === id) {
+        // 删除的是当前文章：优先切换到剩余文章，没有时才新建空白文章
+        if (list.length > 0) {
+          const next = list[0];
+          state.docId = next.id;
+          state.meta = Object.assign(DEFAULT_META(), next.meta || {});
+          state.content = next.content || '';
+          ed.value = state.content;
+          fillForm(); onEditorInput(); renderPreview();
+          Store.write(Store.K_CUR, state.docId);
+          $('#docName').textContent = next.name || '未命名文章';
+        } else {
+          state.docId = null;
+          state.meta = DEFAULT_META();
+          state.content = '';
+          ed.value = '';
+          fillForm(); onEditorInput(); renderPreview();
+          persistDoc(true);
+          Store.write(Store.K_CUR, state.docId);
+          $('#docName').textContent = state.meta.title.trim() || '未命名文章';
+        }
+      }
       renderDocs(); toast('已删除');
     });
   }
