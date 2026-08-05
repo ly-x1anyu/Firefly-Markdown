@@ -2789,7 +2789,12 @@ const GH = (function () {
   }
 
   function fileSlug(meta) {
-    return (meta.slug.trim() || slugify(meta.title) || 'untitled').replace(/[\\/:*?"<>|]/g, '-').slice(0, 120);
+    // 与「导出文件名使用 slug」开关保持一致：关闭用标题 slug，开启用 meta.slug（兜底标题 slug）
+    const titleSlug = slugify(meta.title) || 'untitled';
+    const name = meta.slugAsName
+      ? (meta.slug.trim() || titleSlug)
+      : titleSlug;
+    return name.replace(/[\\/:*?"<>|]/g, '-').slice(0, 120);
   }
   function postPath(meta) { return cfg().path.replace(/\/+$/, '') + '/' + fileSlug(meta) + '.md'; }
 
