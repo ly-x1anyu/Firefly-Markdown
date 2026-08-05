@@ -814,7 +814,7 @@ Bob --> Alice: 响应
           <div><span>内容目录</span><input id="ghsPath" placeholder="src/content/posts" autocomplete="off"></div>
           <div class="gh-col2"><span>OAuth Client ID</span><input id="ghsClientId" placeholder="GitHub OAuth App 的 Client ID" autocomplete="off"></div>
         </div>
-        <p class="hint">在 GitHub → Settings → Developer settings → OAuth Apps 新建应用（Homepage/Callback 随便填），Scope 用 <code>repo</code>；把 Client ID 填到此处即可。文章将读写到 <code>{内容目录}/{slug}.md</code>。</p>
+        <p class="hint">在 GitHub → Settings → Developer settings → OAuth Apps 新建应用（Homepage/Callback 随便填），并开启 Device Flow，Scope 用 <code>repo</code>；把 Client ID 填到此处即可。文章将读写到 <code>{内容目录}/{slug}.md</code>。Device Flow 登录依赖项目自带的 <code>/api/github</code> 代理接口，需部署到 Vercel 等支持 Serverless Functions 的平台方可使用（仓库已包含 <code>api/github.js</code>）。</p>
       </div>
 
       <div class="gh-section" id="ghsLoginBox">

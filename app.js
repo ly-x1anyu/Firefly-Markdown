@@ -2652,7 +2652,7 @@ const GH = (function () {
     if (!c.clientId) { toast('请先在设置中填写 GitHub OAuth Client ID', 'err'); return; }
     if (!c.owner || !c.repo) { toast('请先在设置中填写仓库 owner / repo', 'err'); return; }
     onState && onState({ stage: 'requesting' });
-    const resp = await fetch('https://github.com/login/device/code', {
+    const resp = await fetch('/api/github?action=device-code', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
       body: 'client_id=' + encodeURIComponent(c.clientId) + '&scope=' + encodeURIComponent('repo')
@@ -2664,7 +2664,7 @@ const GH = (function () {
     stopPoll();
     pollTimer = setInterval(async () => {
       try {
-        const r = await fetch('https://github.com/login/oauth/access_token', {
+        const r = await fetch('/api/github?action=access-token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
           body: 'client_id=' + encodeURIComponent(c.clientId) +
