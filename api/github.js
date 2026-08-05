@@ -10,7 +10,11 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const action = (req.query && req.query.action) || '';
+  // 鲁棒解析 action：优先 req.query，回退从 req.url 手动解析（兼容不同 Vercel runtime）
+  let action = (req.query && req.query.action) || '';
+  if (!action && req.url) {
+    try { action = new URL(req.url, 'http://localhost').searchParams.get('action') || ''; } catch (e) {}
+  }
   let upstreamUrl;
   if (action === 'device-code') {
     upstreamUrl = 'https://github.com/login/device/code';

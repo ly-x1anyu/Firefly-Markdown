@@ -2658,7 +2658,7 @@ const GH = (function () {
       body: 'client_id=' + encodeURIComponent(c.clientId) + '&scope=' + encodeURIComponent('repo')
     });
     const d = await resp.json();
-    if (!resp.ok || !d.device_code) throw new Error(d.error_description || '获取设备码失败');
+    if (!resp.ok || !d.device_code) throw new Error(d.error_description || d.error || '获取设备码失败');
     onState && onState({ stage: 'code', user_code: d.user_code, verification_uri: d.verification_uri, interval: d.interval || 5 });
     try { window.open(d.verification_uri, '_blank'); } catch (e) {}
     stopPoll();
