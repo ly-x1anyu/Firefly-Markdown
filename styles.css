@@ -1146,12 +1146,8 @@ body.zen .gutter,
   border: 1px solid var(--border, #e3e6ea); background: var(--bg, #fff); color: var(--text, #333);
 }
 .gh-grid input:focus { outline: none; border-color: var(--accent, #6b7bff); box-shadow: 0 0 0 3px rgba(107,123,255,.15); }
-.gh-code {
-  display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 10px;
-  background: var(--bg-code, #0d1117); color: #e6edf3; border: 1px solid var(--border, #30363d);
-}
-.gh-code a { color: #58a6ff; }
-.gh-code code { font-size: 26px; font-weight: 700; letter-spacing: .12em; color: #7ee787; }
+.gh-pat-wrap { display: flex; gap: 8px; align-items: stretch; }
+.gh-pat-wrap input { flex: 1 1 auto; min-width: 0; }
 .gh-actions { flex-direction: row; flex-wrap: wrap; gap: 10px; }
 .gh-actions .btn { flex: 1 1 auto; }
 .gh-body .hint#ghMsg { margin: 0; min-height: 18px; }

@@ -2605,7 +2605,7 @@ boot();
  * ========================================================================== */
 const GH = (function () {
   const K_TOKEN = 'fmd.gh.token.v1';
-  const DEFAULT_CFG = { owner: '', repo: '', branch: 'main', path: 'src/content/posts', clientId: '' };
+  const DEFAULT_CFG = { owner: '', repo: '', branch: 'main', path: 'src/content/posts' };
 
   function cfg() { const p = Store.pref(); return Object.assign({}, DEFAULT_CFG, p.gh || {}); }
   function saveCfg(partial) { const p = Store.pref(); p.gh = Object.assign({}, DEFAULT_CFG, p.gh || {}, partial); Store.savePref(p); }
@@ -2646,42 +2646,18 @@ const GH = (function () {
 
   function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 
-  // GitHub Device Flow：纯前端授权，无需 client_secret
-  async function login(onState) {
-    const c = cfg();
-    if (!c.clientId) { toast('请先在设置中填写 GitHub OAuth Client ID', 'err'); return; }
-    if (!c.owner || !c.repo) { toast('请先在设置中填写仓库 owner / repo', 'err'); return; }
-    onState && onState({ stage: 'requesting' });
-    const resp = await fetch('/api/github?action=device-code', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
-      body: 'client_id=' + encodeURIComponent(c.clientId) + '&scope=' + encodeURIComponent('repo')
-    });
-    const d = await resp.json();
-    if (!resp.ok || !d.device_code) throw new Error(d.error_description || d.error || '获取设备码失败');
-    onState && onState({ stage: 'code', user_code: d.user_code, verification_uri: d.verification_uri, interval: d.interval || 5 });
-    try { window.open(d.verification_uri, '_blank'); } catch (e) {}
-    stopPoll();
-    pollTimer = setInterval(async () => {
-      try {
-        const r = await fetch('/api/github?action=access-token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
-          body: 'client_id=' + encodeURIComponent(c.clientId) +
-                '&device_code=' + encodeURIComponent(d.device_code) +
-                '&grant_type=urn:ietf:params:oauth:grant-type:device_code'
-        });
-        const t = await r.json();
-        if (t.error) {
-          if (t.error === 'authorization_pending' || t.error === 'slow_down') return;
-          stopPoll(); onState && onState({ stage: 'error', message: t.error_description || t.error }); return;
-        }
-        if (t.access_token) {
-          stopPoll(); setToken(t.access_token); user = await fetchUser();
-          onState && onState({ stage: 'done', user });
-        }
-      } catch (e) { stopPoll(); onState && onState({ stage: 'error', message: e.message }); }
-    }, (d.interval || 5) * 1000);
+  // GitHub 登录：Personal Access Token 模式（纯前端，直接调 api.github.com，无需服务端/代理）
+  async function login(pat) {
+    if (!pat) { throw new Error('请输入 Personal Access Token'); }
+    setToken(pat);
+    try {
+      const u = await api('/user');
+      user = u;
+      return u;
+    } catch (e) {
+      setToken('');
+      throw e;
+    }
   }
   function logout() { stopPoll(); setToken(''); user = null; }
 
@@ -2779,8 +2755,9 @@ const GH = (function () {
 function openGhSync() {
   const c = GH.cfg();
   $('#ghsOwner').value = c.owner; $('#ghsRepo').value = c.repo; $('#ghsBranch').value = c.branch;
-  $('#ghsPath').value = c.path; $('#ghsClientId').value = c.clientId;
-  $('#ghsCodeBox').hidden = true; $('#ghsMsg').textContent = '';
+  $('#ghsPath').value = c.path;
+  $('#ghsPat').value = GH.getToken() || '';
+  $('#ghsMsg').textContent = '';
   refreshGhUI();
   openModal('#modalGhSync');
 }
@@ -2797,31 +2774,25 @@ function refreshGhUI() {
   $('#ghsPushAll').disabled = !token;
 }
 $('#btnGh').addEventListener('click', openGhSync);
-['ghsOwner', 'ghsRepo', 'ghsBranch', 'ghsPath', 'ghsClientId'].forEach(id => {
+['ghsOwner', 'ghsRepo', 'ghsBranch', 'ghsPath'].forEach(id => {
   $('#' + id).addEventListener('change', e => {
-    const map = { ghsOwner: 'owner', ghsRepo: 'repo', ghsBranch: 'branch', ghsPath: 'path', ghsClientId: 'clientId' };
+    const map = { ghsOwner: 'owner', ghsRepo: 'repo', ghsBranch: 'branch', ghsPath: 'path' };
     const part = {}; part[map[id]] = e.target.value.trim(); GH.saveCfg(part);
   });
 });
-$('#ghsLogin').addEventListener('click', () => {
-  $('#ghsMsg').textContent = '';
-  GH.login(st => {
-    if (st.stage === 'code') {
-      $('#ghsCodeBox').hidden = false;
-      $('#ghsUserCode').textContent = st.user_code;
-      const v = $('#ghsVerifyUrl'); if (v && st.verification_uri) v.href = st.verification_uri;
-      $('#ghsMsg').textContent = '已打开授权页，请在其中输入上方代码完成授权…';
-    } else if (st.stage === 'done') {
-      $('#ghsCodeBox').hidden = true;
-      $('#ghsMsg').textContent = '登录成功：' + (st.user && st.user.login);
-      refreshGhUI(); toast('GitHub 登录成功', 'ok');
-    } else if (st.stage === 'error') {
-      $('#ghsCodeBox').hidden = true;
-      $('#ghsMsg').textContent = '登录失败：' + st.message; toast('登录失败：' + st.message, 'err');
-    }
-  }).catch(e => { $('#ghsCodeBox').hidden = true; $('#ghsMsg').textContent = '登录失败：' + e.message; toast('登录失败：' + e.message, 'err'); });
+$('#ghsLogin').addEventListener('click', async () => {
+  const pat = $('#ghsPat').value.trim();
+  if (!pat) { toast('请输入 Personal Access Token', 'err'); $('#ghsMsg').textContent = '请先在上方填入 GitHub Personal Access Token'; return; }
+  $('#ghsMsg').textContent = '正在验证 token…';
+  try {
+    const u = await GH.login(pat);
+    $('#ghsMsg').textContent = '登录成功：' + u.login;
+    refreshGhUI(); toast('GitHub 登录成功', 'ok');
+  } catch (e) {
+    $('#ghsMsg').textContent = '登录失败：' + e.message; toast('登录失败：' + e.message, 'err');
+  }
 });
-$('#ghsLogout').addEventListener('click', () => { GH.logout(); $('#ghsCodeBox').hidden = true; refreshGhUI(); $('#ghsMsg').textContent = '已退出登录'; });
+$('#ghsLogout').addEventListener('click', () => { GH.logout(); refreshGhUI(); $('#ghsMsg').textContent = '已退出登录'; });
 $('#ghsPull').addEventListener('click', async () => {
   const btn = $('#ghsPull'); btn.disabled = true; $('#ghsMsg').textContent = '正在从 GitHub 拉取…';
   try {

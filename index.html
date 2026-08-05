@@ -812,18 +812,16 @@ Bob --> Alice: 响应
           <div><span>Repo</span><input id="ghsRepo" placeholder="如 Astro-Firefly" autocomplete="off"></div>
           <div><span>分支</span><input id="ghsBranch" placeholder="main" autocomplete="off"></div>
           <div><span>内容目录</span><input id="ghsPath" placeholder="src/content/posts" autocomplete="off"></div>
-          <div class="gh-col2"><span>OAuth Client ID</span><input id="ghsClientId" placeholder="GitHub OAuth App 的 Client ID" autocomplete="off"></div>
         </div>
-        <p class="hint">在 GitHub → Settings → Developer settings → OAuth Apps 新建应用（Homepage/Callback 随便填），并开启 Device Flow，Scope 用 <code>repo</code>；把 Client ID 填到此处即可。文章将读写到 <code>{内容目录}/{slug}.md</code>。Device Flow 登录依赖项目自带的 <code>/api/github</code> 代理接口，需部署到 Vercel 等支持 Serverless Functions 的平台方可使用（仓库已包含 <code>api/github.js</code>）。</p>
+        <p class="hint">文章将读写到 <code>{内容目录}/{slug}.md</code>。登录使用 Personal Access Token，无需 Serverless Functions，纯前端直接调用 GitHub API。</p>
       </div>
 
       <div class="gh-section" id="ghsLoginBox">
-        <button class="btn btn-primary" id="ghsLogin"><svg class="ico ico-sm"><use href="#i-github"/></svg> 登录 GitHub</button>
-        <div class="gh-code" id="ghsCodeBox" hidden>
-          <p>请在 <a id="ghsVerifyUrl" href="https://github.com/login/device" target="_blank" rel="noopener">GitHub 授权页</a> 输入以下代码：</p>
-          <code id="ghsUserCode">------</code>
-          <p class="hint">已自动打开授权页，授权后本窗口会自动完成登录。</p>
+        <div class="gh-pat-wrap">
+          <input id="ghsPat" type="password" placeholder="GitHub Personal Access Token（ghp_... 或 github_pat_...）" autocomplete="off">
+          <button class="btn btn-primary" id="ghsLogin"><svg class="ico ico-sm"><use href="#i-github"/></svg> 登录 GitHub</button>
         </div>
+        <p class="hint">在 GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token，勾选 <code>repo</code> 权限，复制后粘贴到上方。Token 仅保存在本浏览器 localStorage。</p>
       </div>
 
       <div class="gh-section gh-actions">
