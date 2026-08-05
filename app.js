@@ -2852,7 +2852,12 @@ const GH = (function () {
   }
   async function deleteRemoteCurrent() {
     const path = postPath(state.meta);
-    const ex = await getPost(path);
+    let ex;
+    try { ex = await getPost(path); }
+    catch (e) {
+      if (/not found/i.test(e.message)) return fileSlug(state.meta); // 远程本就不存在，视为已删除（幂等）
+      throw e;
+    }
     await deletePost(path, ex.sha);
     return fileSlug(state.meta);
   }
@@ -2881,6 +2886,7 @@ function refreshGhUI() {
   $('#ghsPull').disabled = !token;
   $('#ghsPush').disabled = !token;
   $('#ghsPushAll').disabled = !token;
+  $('#ghsDel').disabled = !token;
 }
 $('#btnGh').addEventListener('click', openGhSync);
 ['ghsOwner', 'ghsRepo', 'ghsBranch', 'ghsPath'].forEach(id => {
@@ -2928,6 +2934,21 @@ $('#ghsPushAll').addEventListener('click', async () => {
     $('#ghsMsg').textContent = '已发布全部 ' + n + ' 篇'; toast('已发布 ' + n + ' 篇', 'ok');
   } catch (e) { $('#ghsMsg').textContent = '发布失败：' + e.message; toast('发布失败：' + e.message, 'err'); }
   finally { refreshGhUI(); }
+});
+$('#ghsDel').addEventListener('click', () => {
+  if (!state.meta.title.trim() && !state.meta.slug.trim()) { toast('请先填写文章标题或 slug', 'err'); return; }
+  const name = (state.meta.slugAsName && state.meta.slug.trim()) ? state.meta.slug.trim() : (slugify(state.meta.title) || 'untitled');
+  confirmBox('删除远程文章', `确定从 GitHub 删除「${name}.md」？此操作不可恢复。`, async () => {
+    const btn = $('#ghsDel'); btn.disabled = true; $('#ghsMsg').textContent = '删除中…';
+    try {
+      const slug = await GH.deleteRemoteCurrent();
+      $('#ghsMsg').textContent = '已从 GitHub 删除：' + slug + '.md';
+      toast('已删除 ' + slug, 'ok');
+    } catch (e) {
+      $('#ghsMsg').textContent = '删除失败：' + e.message;
+      toast('删除失败：' + e.message, 'err');
+    } finally { refreshGhUI(); }
+  });
 });
 // 启动时静默恢复登录态
 if (GH.getToken()) { GH.fetchUser().then(refreshGhUI).catch(() => {}); }
