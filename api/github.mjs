@@ -1,8 +1,9 @@
-// Vercel Serverless Function：代理 GitHub OAuth Device Flow 的两个端点。
+// Vercel Serverless Function (ESM)：代理 GitHub OAuth Device Flow 的两个端点。
 // 浏览器因 CORS 无法直接请求 github.com/login/device/code 与 /login/oauth/access_token，
 // 改为请求同源的 /api/github?action=...，由本函数转发到 GitHub。
 // Device Flow 不需要 client_secret，故本函数不存储任何密钥，仅做透传。
-module.exports = async function handler(req, res) {
+
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.statusCode = 405;
     res.setHeader('Content-Type', 'application/json');
@@ -15,6 +16,7 @@ module.exports = async function handler(req, res) {
   if (!action && req.url) {
     try { action = new URL(req.url, 'http://localhost').searchParams.get('action') || ''; } catch (e) {}
   }
+
   let upstreamUrl;
   if (action === 'device-code') {
     upstreamUrl = 'https://github.com/login/device/code';
@@ -52,4 +54,4 @@ module.exports = async function handler(req, res) {
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ error: 'Upstream request failed: ' + e.message }));
   }
-};
+}

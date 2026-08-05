@@ -1,7 +1,7 @@
 {
   "version": 2,
   "functions": {
-    "api/github.js": {
+    "api/github.mjs": {
       "memory": 128,
       "maxDuration": 10
     }
