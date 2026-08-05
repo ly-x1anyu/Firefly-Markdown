@@ -2597,7 +2597,262 @@ function boot() {
 }
 boot();
 
+/* ==========================================================================
+ * 12. GitHub 后端（Device Flow OAuth + Contents API）
+ *     设计：localStorage 仍是本地工作副本；GitHub 作为可选的同步/发布远端。
+ *     登录用 GitHub Device Flow（纯前端、无需服务器密钥），文章读写走
+ *     Contents API，保存即提交，可触发 Astro-Firefly 在 Vercel 自动重建。
+ * ========================================================================== */
+const GH = (function () {
+  const K_TOKEN = 'fmd.gh.token.v1';
+  const DEFAULT_CFG = { owner: '', repo: '', branch: 'main', path: 'src/content/posts', clientId: '' };
+
+  function cfg() { const p = Store.pref(); return Object.assign({}, DEFAULT_CFG, p.gh || {}); }
+  function saveCfg(partial) { const p = Store.pref(); p.gh = Object.assign({}, DEFAULT_CFG, p.gh || {}, partial); Store.savePref(p); }
+  function getToken() { try { return localStorage.getItem(K_TOKEN) || ''; } catch (e) { return ''; } }
+  function setToken(t) { try { if (t) localStorage.setItem(K_TOKEN, t); else localStorage.removeItem(K_TOKEN); } catch (e) {} }
+
+  function b64e(s) { return btoa(unescape(encodeURIComponent(s))); }
+  function b64d(b) { return decodeURIComponent(escape(atob(b.replace(/\s/g, '')))); }
+
+  let user = null;
+  let pollTimer = null;
+
+  async function api(path, opts) {
+    opts = opts || {};
+    const headers = { 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+    const tk = getToken();
+    if (tk) headers['Authorization'] = 'Bearer ' + tk;
+    if (opts.body) headers['Content-Type'] = 'application/json';
+    const res = await fetch('https://api.github.com' + path, {
+      method: opts.method || 'GET',
+      headers,
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    });
+    let data = {};
+    try { data = await res.json(); } catch (e) {}
+    if (!res.ok) {
+      const msg = (data && (data.message || data.error_description)) || ('HTTP ' + res.status);
+      throw new Error(msg);
+    }
+    return data;
+  }
+
+  async function fetchUser() {
+    if (!getToken()) { user = null; return null; }
+    try { user = await api('/user'); } catch (e) { user = null; setToken(''); }
+    return user;
+  }
+
+  function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+
+  // GitHub Device Flow：纯前端授权，无需 client_secret
+  async function login(onState) {
+    const c = cfg();
+    if (!c.clientId) { toast('请先在设置中填写 GitHub OAuth Client ID', 'err'); return; }
+    if (!c.owner || !c.repo) { toast('请先在设置中填写仓库 owner / repo', 'err'); return; }
+    onState && onState({ stage: 'requesting' });
+    const resp = await fetch('https://github.com/login/device/code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
+      body: 'client_id=' + encodeURIComponent(c.clientId) + '&scope=' + encodeURIComponent('repo')
+    });
+    const d = await resp.json();
+    if (!resp.ok || !d.device_code) throw new Error(d.error_description || '获取设备码失败');
+    onState && onState({ stage: 'code', user_code: d.user_code, verification_uri: d.verification_uri, interval: d.interval || 5 });
+    try { window.open(d.verification_uri, '_blank'); } catch (e) {}
+    stopPoll();
+    pollTimer = setInterval(async () => {
+      try {
+        const r = await fetch('https://github.com/login/oauth/access_token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
+          body: 'client_id=' + encodeURIComponent(c.clientId) +
+                '&device_code=' + encodeURIComponent(d.device_code) +
+                '&grant_type=urn:ietf:params:oauth:grant-type:device_code'
+        });
+        const t = await r.json();
+        if (t.error) {
+          if (t.error === 'authorization_pending' || t.error === 'slow_down') return;
+          stopPoll(); onState && onState({ stage: 'error', message: t.error_description || t.error }); return;
+        }
+        if (t.access_token) {
+          stopPoll(); setToken(t.access_token); user = await fetchUser();
+          onState && onState({ stage: 'done', user });
+        }
+      } catch (e) { stopPoll(); onState && onState({ stage: 'error', message: e.message }); }
+    }, (d.interval || 5) * 1000);
+  }
+  function logout() { stopPoll(); setToken(''); user = null; }
+
+  function repoPath(p) {
+    return '/repos/' + encodeURIComponent(cfg().owner) + '/' + encodeURIComponent(cfg().repo) + '/contents/' + String(p).replace(/^\/+|\/+$/g, '');
+  }
+
+  async function listPosts() {
+    const data = await api(repoPath(cfg().path) + '?ref=' + encodeURIComponent(cfg().branch));
+    if (!Array.isArray(data)) return [];
+    return data.filter(f => /\.(md|markdown|mdx)$/i.test(f.name)).map(f => ({ name: f.name, path: f.path, sha: f.sha, download: f.download_url }));
+  }
+  async function getPost(path) {
+    const data = await api(repoPath(path) + '?ref=' + encodeURIComponent(cfg().branch));
+    const content = (data.content && data.encoding === 'base64') ? b64d(data.content) : '';
+    return { content, sha: data.sha };
+  }
+  async function putPost(path, text, sha) {
+    const body = { message: (sha ? 'update: ' : 'add: ') + path, content: b64e(text), branch: cfg().branch };
+    if (sha) body.sha = sha;
+    return api(repoPath(path), { method: 'PUT', body });
+  }
+  async function deletePost(path, sha) {
+    return api(repoPath(path), { method: 'DELETE', body: { message: 'delete: ' + path, sha, branch: cfg().branch } });
+  }
+
+  function fileSlug(meta) {
+    return (meta.slug.trim() || slugify(meta.title) || 'untitled').replace(/[\\/:*?"<>|]/g, '-').slice(0, 120);
+  }
+  function postPath(meta) { return cfg().path.replace(/\/+$/, '') + '/' + fileSlug(meta) + '.md'; }
+
+  function upsertLocal(meta, body) {
+    const docs = Store.docs();
+    const slug = (meta.slug || '').trim();
+    let doc = slug ? docs.find(d => ((d.meta && d.meta.slug) || '').trim() === slug) : null;
+    if (!doc) doc = docs.find(d => (d.name || '') === (meta.title || '').trim());
+    if (!doc) {
+      doc = { id: 'gh-' + (slug || slugify(meta.title) || ('d' + Date.now().toString(36))), name: meta.title || '未命名文章', updatedAt: Date.now(), meta, content: body };
+      docs.unshift(doc);
+    } else {
+      doc.name = meta.title || doc.name; doc.meta = meta; doc.content = body; doc.updatedAt = Date.now();
+    }
+    Store.saveDocs(docs.slice(0, 60));
+  }
+
+  async function pullAll(onProgress) {
+    const files = await listPosts();
+    let imported = 0;
+    for (const f of files) {
+      const { content } = await getPost(f.path);
+      const { meta, body } = parseMarkdown(content);
+      upsertLocal(meta, body);
+      imported++; onProgress && onProgress(imported, files.length);
+    }
+    return imported;
+  }
+
+  // 用指定 meta+content 生成完整 .md（用于发布全部，避免改动全局 state）
+  function buildDocFor(meta, content) {
+    const sm = state.meta, sc = state.content;
+    state.meta = meta; state.content = content;
+    const out = buildFullDoc();
+    state.meta = sm; state.content = sc;
+    return out;
+  }
+
+  async function publishCurrent() {
+    const path = postPath(state.meta);
+    let sha; try { const ex = await getPost(path); sha = ex.sha; } catch (e) { sha = undefined; }
+    await putPost(path, buildFullDoc(), sha);
+    return fileSlug(state.meta);
+  }
+  async function publishAll() {
+    const docs = Store.docs();
+    let ok = 0;
+    for (const d of docs) {
+      const m = d.meta || DEFAULT_META();
+      const path = postPath(m);
+      let sha; try { const ex = await getPost(path); sha = ex.sha; } catch (e) {}
+      await putPost(path, buildDocFor(m, d.content || ''), sha); ok++;
+    }
+    return ok;
+  }
+  async function deleteRemoteCurrent() {
+    const path = postPath(state.meta);
+    const ex = await getPost(path);
+    await deletePost(path, ex.sha);
+    return fileSlug(state.meta);
+  }
+
+  return { cfg, saveCfg, getToken, setToken, fetchUser, login, logout, listPosts, pullAll, publishCurrent, publishAll, deleteRemoteCurrent, getUser: () => user };
+})();
+
+/* ---------- GitHub 同步 UI ---------- */
+function openGhSync() {
+  const c = GH.cfg();
+  $('#ghsOwner').value = c.owner; $('#ghsRepo').value = c.repo; $('#ghsBranch').value = c.branch;
+  $('#ghsPath').value = c.path; $('#ghsClientId').value = c.clientId;
+  $('#ghsCodeBox').hidden = true; $('#ghsMsg').textContent = '';
+  refreshGhUI();
+  openModal('#modalGhSync');
+}
+function refreshGhUI() {
+  const token = GH.getToken(), u = GH.getUser(), status = $('#ghsStatus');
+  if (!status) return;
+  if (token && u) status.innerHTML = '<span class="gh-dot on"></span> 已登录为 <b>' + escapeHtml(u.login) + '</b>';
+  else if (token) status.innerHTML = '<span class="gh-dot on"></span> 已登录';
+  else status.innerHTML = '<span class="gh-dot"></span> 未登录';
+  $('#ghsLogin').disabled = !!token;
+  $('#ghsLogout').disabled = !token;
+  $('#ghsPull').disabled = !token;
+  $('#ghsPush').disabled = !token;
+  $('#ghsPushAll').disabled = !token;
+}
+$('#btnGh').addEventListener('click', openGhSync);
+['ghsOwner', 'ghsRepo', 'ghsBranch', 'ghsPath', 'ghsClientId'].forEach(id => {
+  $('#' + id).addEventListener('change', e => {
+    const map = { ghsOwner: 'owner', ghsRepo: 'repo', ghsBranch: 'branch', ghsPath: 'path', ghsClientId: 'clientId' };
+    const part = {}; part[map[id]] = e.target.value.trim(); GH.saveCfg(part);
+  });
+});
+$('#ghsLogin').addEventListener('click', () => {
+  $('#ghsMsg').textContent = '';
+  GH.login(st => {
+    if (st.stage === 'code') {
+      $('#ghsCodeBox').hidden = false;
+      $('#ghsUserCode').textContent = st.user_code;
+      const v = $('#ghsVerifyUrl'); if (v && st.verification_uri) v.href = st.verification_uri;
+      $('#ghsMsg').textContent = '已打开授权页，请在其中输入上方代码完成授权…';
+    } else if (st.stage === 'done') {
+      $('#ghsCodeBox').hidden = true;
+      $('#ghsMsg').textContent = '登录成功：' + (st.user && st.user.login);
+      refreshGhUI(); toast('GitHub 登录成功', 'ok');
+    } else if (st.stage === 'error') {
+      $('#ghsCodeBox').hidden = true;
+      $('#ghsMsg').textContent = '登录失败：' + st.message; toast('登录失败：' + st.message, 'err');
+    }
+  }).catch(e => { $('#ghsCodeBox').hidden = true; $('#ghsMsg').textContent = '登录失败：' + e.message; toast('登录失败：' + e.message, 'err'); });
+});
+$('#ghsLogout').addEventListener('click', () => { GH.logout(); $('#ghsCodeBox').hidden = true; refreshGhUI(); $('#ghsMsg').textContent = '已退出登录'; });
+$('#ghsPull').addEventListener('click', async () => {
+  const btn = $('#ghsPull'); btn.disabled = true; $('#ghsMsg').textContent = '正在从 GitHub 拉取…';
+  try {
+    const n = await GH.pullAll((i, t) => { $('#ghsMsg').textContent = '拉取中 ' + i + '/' + t; });
+    renderDocs();
+    $('#ghsMsg').textContent = '已拉取 ' + n + ' 篇文章到本地文档库';
+    toast('已拉取 ' + n + ' 篇', 'ok');
+  } catch (e) { $('#ghsMsg').textContent = '拉取失败：' + e.message; toast('拉取失败：' + e.message, 'err'); }
+  finally { refreshGhUI(); }
+});
+$('#ghsPush').addEventListener('click', async () => {
+  if (!state.meta.title.trim() && !state.meta.slug.trim()) { toast('请先填写文章标题或 slug', 'err'); return; }
+  const btn = $('#ghsPush'); btn.disabled = true; $('#ghsMsg').textContent = '发布中…';
+  try {
+    const slug = await GH.publishCurrent();
+    $('#ghsMsg').textContent = '已发布：' + slug + '.md'; toast('已发布 ' + slug, 'ok');
+  } catch (e) { $('#ghsMsg').textContent = '发布失败：' + e.message; toast('发布失败：' + e.message, 'err'); }
+  finally { refreshGhUI(); }
+});
+$('#ghsPushAll').addEventListener('click', async () => {
+  const btn = $('#ghsPushAll'); btn.disabled = true; $('#ghsMsg').textContent = '发布全部中…';
+  try {
+    const n = await GH.publishAll();
+    $('#ghsMsg').textContent = '已发布全部 ' + n + ' 篇'; toast('已发布 ' + n + ' 篇', 'ok');
+  } catch (e) { $('#ghsMsg').textContent = '发布失败：' + e.message; toast('发布失败：' + e.message, 'err'); }
+  finally { refreshGhUI(); }
+});
+// 启动时静默恢复登录态
+if (GH.getToken()) { GH.fetchUser().then(refreshGhUI).catch(() => {}); }
+
 /* 暴露给控制台调试 */
-window.FireflyMD = { state, buildFrontMatter, buildFullDoc, render: MD, importText, renderPreview };
+window.FireflyMD = { state, buildFrontMatter, buildFullDoc, render: MD, importText, renderPreview, GH };
 
 })();

@@ -84,7 +84,7 @@
         <span class="brand-logo"><img src="assets/favicon.png" alt="Firefly" width="22" height="22"></span>
         <span class="brand-text">
           <b>Firefly Markdown</b>
-          <i>Astro-Firefly 博文生成器</i>
+          <i>Firefly 博文生成器</i>
         </span>
       </div>
     </div>
@@ -107,6 +107,7 @@
       <button class="icon-btn only-desktop" id="btnLayout" title="切换布局 (Ctrl+\)"><svg class="ico"><use href="#i-layout"/></svg></button>
       <button class="icon-btn" id="btnTheme" title="切换主题"><svg class="ico"><use href="#i-auto"/></svg></button>
       <button class="icon-btn" id="btnHelp" title="帮助与快捷键 (F1)"><svg class="ico"><use href="#i-help"/></svg></button>
+      <button class="icon-btn" id="btnGh" title="GitHub 同步 / 发布到仓库"><svg class="ico"><use href="#i-github"/></svg></button>
       <button class="btn btn-primary" id="btnExport"><svg class="ico"><use href="#i-download"/></svg><span>导出 MD</span></button>
     </div>
   </header>
@@ -794,6 +795,44 @@ Bob --> Alice: 响应
         </div>
       </div>
       <p class="help-foot">纯前端运行 · 数据只存在你的浏览器本地 · 断网可用</p>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modalGhSync" hidden>
+  <div class="modal-card wide">
+    <header><h3>GitHub 同步</h3><button class="icon-btn" data-close><svg class="ico"><use href="#i-x"/></svg></button></header>
+    <div class="modal-body gh-body">
+      <div class="gh-status" id="ghsStatus"><span class="gh-dot"></span> 未登录</div>
+
+      <div class="gh-section">
+        <label class="gh-label">仓库设置</label>
+        <div class="gh-grid">
+          <div><span>Owner</span><input id="ghsOwner" placeholder="如 ly-x1anyu" autocomplete="off"></div>
+          <div><span>Repo</span><input id="ghsRepo" placeholder="如 Astro-Firefly" autocomplete="off"></div>
+          <div><span>分支</span><input id="ghsBranch" placeholder="main" autocomplete="off"></div>
+          <div><span>内容目录</span><input id="ghsPath" placeholder="src/content/posts" autocomplete="off"></div>
+          <div class="gh-col2"><span>OAuth Client ID</span><input id="ghsClientId" placeholder="GitHub OAuth App 的 Client ID" autocomplete="off"></div>
+        </div>
+        <p class="hint">在 GitHub → Settings → Developer settings → OAuth Apps 新建应用（Homepage/Callback 随便填），Scope 用 <code>repo</code>；把 Client ID 填到此处即可。文章将读写到 <code>{内容目录}/{slug}.md</code>。</p>
+      </div>
+
+      <div class="gh-section" id="ghsLoginBox">
+        <button class="btn btn-primary" id="ghsLogin"><svg class="ico ico-sm"><use href="#i-github"/></svg> 登录 GitHub</button>
+        <div class="gh-code" id="ghsCodeBox" hidden>
+          <p>请在 <a id="ghsVerifyUrl" href="https://github.com/login/device" target="_blank" rel="noopener">GitHub 授权页</a> 输入以下代码：</p>
+          <code id="ghsUserCode">------</code>
+          <p class="hint">已自动打开授权页，授权后本窗口会自动完成登录。</p>
+        </div>
+      </div>
+
+      <div class="gh-section gh-actions">
+        <button class="btn" id="ghsPull"><svg class="ico ico-sm"><use href="#i-download"/></svg> 从 GitHub 拉取全部</button>
+        <button class="btn" id="ghsPush"><svg class="ico ico-sm"><use href="#i-upload"/></svg> 发布当前文章</button>
+        <button class="btn" id="ghsPushAll"><svg class="ico ico-sm"><use href="#i-upload"/></svg> 发布全部</button>
+        <button class="btn btn-ghost" id="ghsLogout">退出登录</button>
+      </div>
+      <p class="hint" id="ghsMsg"></p>
     </div>
   </div>
 </div>
