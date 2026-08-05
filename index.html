@@ -7,6 +7,7 @@
 <meta name="description" content="Firefly Markdown —— 纯前端、零依赖、离线可用的 Astro-Firefly 主题博文生成器">
 <title>Firefly Markdown · 博文生成器</title>
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
 <link rel="icon" type="image/png" href="assets/favicon.png">
 </head>
 <body>
@@ -1022,6 +1023,18 @@ GitHub 仓库卡片：
       .catch(function(){ /* keep embedded offline fallback */ });
   }
 })();
+</script>
+<script src="vendor/katex/katex.min.js"></script>
+<script>
+  // mhchem 是 KaTeX 扩展，依赖 katex 全局对象；若 katex 未加载则跳过，避免降级时抛错
+  (function() {
+    if (typeof katex === 'undefined') return;
+    var s = document.createElement('script');
+    s.src = 'vendor/katex/mhchem.min.js';
+    s.async = false;
+    var cur = document.scripts[document.scripts.length - 1];
+    cur.parentNode.insertBefore(s, cur.nextSibling);
+  })();
 </script>
 <script src="app.js"></script>
 </body>

@@ -665,6 +665,36 @@ select { appearance: none; cursor: pointer; padding-right: 28px;
 .m-breve::before { content: "˘"; }
 .m-vec::before { content: "→"; top: -.4em; }
 .m-unknown { color: var(--rose); }
+/* 扩展：运算符名 / 大运算符 / 上下限 / 装饰 / 字体 */
+.m-op { margin: 0 .12em; }
+.m-bigop { font-style: normal; vertical-align: middle; }
+.math-block .m-bigop { font-size: 1.5em; }
+.m-stackop { display: inline-flex; flex-direction: column; text-align: center; vertical-align: middle; line-height: 1; margin: 0 .1em; }
+.m-stackop .m-top, .m-stackop .m-bot { font-size: .7em; line-height: 1.1; }
+.m-stackop .m-bigop { font-size: 1.4em; }
+.m-under { border-bottom: 1px solid currentColor; }
+.m-obrace { display: inline-block; border-top: 1px solid currentColor; position: relative; padding-top: .35em; }
+.m-obrace::before { content: "\23DE"; position: absolute; top: -.5em; left: 0; right: 0; text-align: center; }
+.m-ubrace { display: inline-block; border-bottom: 1px solid currentColor; position: relative; padding-bottom: .35em; }
+.m-ubrace::before { content: "\23DF"; position: absolute; bottom: -.5em; left: 0; right: 0; text-align: center; }
+.m-stack { display: inline-flex; flex-direction: column; text-align: center; vertical-align: middle; line-height: 1; }
+.m-stack .m-up, .m-stack .m-down { font-size: .7em; line-height: 1.1; }
+.m-bb { font-style: normal; }
+.m-scr { font-style: italic; }
+.m-env.m-small { vertical-align: middle; }
+.m-env.m-small .m-matrix { font-size: .82em; }
+/* 矢量箭头重音 */
+.m-arr-r, .m-arr-l, .m-arr-lr, .m-arr-ru, .m-arr-lu, .m-arr-lru, .m-ring { display: inline-block; position: relative; }
+.m-arr-r::before, .m-arr-l::before, .m-arr-lr::before, .m-arr-ru::before, .m-arr-lu::before, .m-arr-lru::before, .m-ring::before {
+  position: absolute; left: 0; right: 0; top: -.55em; text-align: center; font-size: .8em; line-height: 1; color: var(--text);
+}
+.m-arr-r::before { content: "\2192"; }
+.m-arr-l::before { content: "\2190"; }
+.m-arr-lr::before { content: "\2194"; }
+.m-arr-ru::before { content: "\2192"; bottom: -.45em; top: auto; }
+.m-arr-lu::before { content: "\2190"; bottom: -.45em; top: auto; }
+.m-arr-lru::before { content: "\2194"; bottom: -.45em; top: auto; }
+.m-ring::before { content: "\02DA"; }
 
 /* Mermaid 预览 */
 .mermaid-block { margin: 1.2em 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--bg-elev); }

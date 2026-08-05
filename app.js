@@ -156,10 +156,36 @@ const MATH = (function () {
     langle:'⟨',rangle:'⟩',lfloor:'⌊',rfloor:'⌋',lceil:'⌈',rceil:'⌉',lbrace:'{',rbrace:'}',
     colon:'∶',mid:'∣',Vert:'∥',quad:' ',qquad:' ',
     AA:'Å',aa:'å',O:'Ø',o:'ø',L:'Ł',l:'ł',P:'¶',S:'§',pounds:'£',euro:'€',yen:'¥',
-    natural:'ℕ',real:'ℝ',complex:'ℂ',integer:'ℤ',rational:'ℚ'
+    natural:'ℕ',real:'ℝ',complex:'ℂ',integer:'ℤ',rational:'ℚ',
+    bigcup:'∪',bigcap:'∩',bigvee:'∨',bigwedge:'∧',bigoplus:'⊕',bigotimes:'⊗',bigodot:'⊙',biguplus:'⊎',bigsqcup:'⨆',
+    iint:'∬',iiint:'∭',iiiint:'⨌',oiint:'∯',oiiint:'∰',smallint:'∫',amalg:'⨿',
+    sqcup:'⊔',uplus:'⊎',boxplus:'⊞',boxminus:'⊟',boxtimes:'⊠',curlyvee:'⋎',curlywedge:'⋏',dotplus:'∔',barwedge:'⊼',veebar:'⊻',
+    Longleftarrow:'⟸',Longrightarrow:'⟹',implies:'⟹',impliedby:'⟸',iff:'⟺',Updownarrow:'⇕',
+    nearrow:'↗',searrow:'↘',swarrow:'↙',nwarrow:'↖',rightsquigarrow:'⇝',leadsto:'⇝',
+    prec:'≺',succ:'≻',preceq:'⪯',succeq:'⪰',Vdash:'⊩',vDash:'⊨',nvdash:'⊬',nvDash:'⊭',
+    sqsubset:'⊏',sqsupset:'⊐',sqsubseteq:'⊑',sqsupseteq:'⊒',triangleleft:'◁',triangleright:'▷',trianglelefteq:'⊴',trianglerighteq:'⊵',unlhd:'⊴',unrhd:'⊵',
+    lessdot:'⋖',gtrdot:'⋗',lll:'⋘',ggg:'⋙',lesseqgtr:'⋚',gtreqless:'⋛',lneq:'⪇',gneq:'⪈',lnapprox:'⪉',gnapprox:'⪊',
+    nless:'≮',ngtr:'≯',nleq:'≰',ngeq:'≱',nsubseteq:'⊄',nsupseteq:'⊅',subsetneq:'⊊',supsetneq:'⊋',nprec:'⊀',nsucc:'⊁',nmid:'∤',nparallel:'∦',
+    ltimes:'⋉',rtimes:'⋊',bowtie:'⋈',leftthreetimes:'⋋',rightthreetimes:'⋌',between:'≬',pitchfork:'⋔',circeq:'≗',
+    complement:'∁',blacksquare:'■',blacktriangle:'▲',blacktriangledown:'▼',blacktriangleleft:'◀',blacktriangleright:'▶',
+    spadesuit:'♠',heartsuit:'♥',diamondsuit:'♦',clubsuit:'♣',measuredangle:'∡',sphericalangle:'∢',backprime:'‵'
   };
-  const ACCENTS = { vec:'m-vec', hat:'m-hat', tilde:'m-tilde', bar:'m-ovl', overline:'m-ovl', dot:'m-dot', ddot:'m-ddot', check:'m-check', acute:'m-acute', grave:'m-grave', breve:'m-breve', widetilde:'m-tilde', widehat:'m-hat' };
+  const ACCENTS = { vec:'m-vec', hat:'m-hat', tilde:'m-tilde', bar:'m-ovl', overline:'m-ovl', dot:'m-dot', ddot:'m-ddot', check:'m-check', acute:'m-acute', grave:'m-grave', breve:'m-breve', widetilde:'m-tilde', widehat:'m-hat',
+    overrightarrow:'m-arr-r', overleftarrow:'m-arr-l', overleftrightarrow:'m-arr-lr', underrightarrow:'m-arr-ru', underleftarrow:'m-arr-lu', underleftrightarrow:'m-arr-lru', mathring:'m-ring' };
   const FONT = { mathrm:'m-rm', mathit:'m-it', mathbf:'m-bf', mathsf:'m-sf', mathtt:'m-tt', mathcal:'m-cal', mathfrak:'m-frak', textrm:'m-rm', textit:'m-it', textbf:'m-bf', textsf:'m-sf', texttt:'m-tt', textnormal:'' };
+  // 运算符名（按 KaTeX 官方支持列表补全）：渲染为正体算子文本
+  const OPNAMES = { arcsin:1,arccos:1,arctan:1,sin:1,cos:1,tan:1,cot:1,csc:1,sec:1,sinh:1,cosh:1,tanh:1,
+    log:1,ln:1,lg:1,exp:1,
+    lim:1,limsup:1,liminf:1,varlimsup:1,varliminf:1,injlim:1,projlim:1,varinjlim:1,varprojlim:1,plim:1,
+    min:1,max:1,inf:1,sup:1,gcd:1,lcm:1,det:1,Pr:1,arg:1,argmax:1,argmin:1,dim:1,ker:1,deg:1,hom:1,
+    mod:1,bmod:1,pmod:1,pod:1 };
+  // 可带上下限的大运算符（sum/prod/int/... 已含于 SYM，这里集中管理上/下 placement）
+  const BIGOPS = { sum:'∑',prod:'∏',int:'∫',oint:'∮',coprod:'∐',
+    bigcup:'∪',bigcap:'∩',bigvee:'∨',bigwedge:'∧',bigoplus:'⊕',bigotimes:'⊗',bigodot:'⊙',biguplus:'⊎',bigsqcup:'⨆',
+    iint:'∬',iiint:'∭',iiiint:'⨌',oiint:'∯',oiiint:'∰',smallint:'∫',amalg:'⨿' };
+  const BB = { A:'𝔸',B:'𝔹',C:'ℂ',D:'𝔻',E:'𝔼',F:'𝔽',G:'𝔾',H:'ℍ',I:'𝕀',J:'𝕁',K:'𝕂',L:'𝕃',M:'𝕄',N:'ℕ',O:'𝕆',P:'ℙ',Q:'ℚ',R:'ℝ',S:'𝕊',T:'𝕋',U:'𝕌',V:'𝕍',W:'𝕎',X:'𝕏',Y:'𝕐',Z:'ℤ',
+    a:'𝕒',b:'𝕓',c:'𝕔',d:'𝕕',e:'𝕖',f:'𝕗',g:'𝕘',h:'𝕙',i:'𝕚',j:'𝕛',k:'𝕜',l:'𝕝',m:'𝕞',n:'𝕟',o:'𝕠',p:'𝕡',q:'𝕢',r:'𝕣',s:'𝕤',t:'𝕥',u:'𝕦',v:'𝕧',w:'𝕨',x:'𝕩',y:'𝕪',z:'𝕫',
+    0:'𝟘',1:'𝟙',2:'𝟚',3:'𝟛',4:'𝟜',5:'𝟝',6:'𝟞',7:'𝟟',8:'𝟠',9:'𝟡' };
   function eh(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   function render(tex, display) {
@@ -167,7 +193,35 @@ const MATH = (function () {
     // 行内路径里文本已被 escapeHtml，这里还原常见实体，避免矩阵 & 分隔符被转义
     tex = tex.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
     let i = 0; const n = tex.length;
+    let styleMode = display ? 'display' : 'text';
+    let limitsMode = '';
     const sp = c => c===' '||c==='\t'||c==='\n'||c==='\r';
+    function rawArg() {
+      while (i<n && sp(tex[i])) i++;
+      if (tex[i] === '{') { i++; const s = seqRaw('}'); if (tex[i] === '}') i++; return s; }
+      return token();
+    }
+    function bbArg() {
+      const s = rawArg();
+      let out = '';
+      for (const ch of s) out += (ch in BB) ? BB[ch] : ch;
+      return `<span class="m-bb">${out}</span>`;
+    }
+    function bigOp(name) {
+      const glyph = BIGOPS[name] || SYM[name];
+      let up = null, down = null, moved = false;
+      while (i<n) {
+        if (tex[i] === '^') { i++; up = scriptArg(); moved = true; }
+        else if (tex[i] === '_') { i++; down = scriptArg(); moved = true; }
+        else break;
+      }
+      const over = (styleMode === 'display' && limitsMode !== 'nolimits') || limitsMode === 'limits';
+      limitsMode = '';
+      if (over && moved) {
+        return `<span class="m-stackop">${up?`<span class="m-top">${up}</span>`:''}<span class="m-bigop">${glyph}</span>${down?`<span class="m-bot">${down}</span>`:''}</span>`;
+      }
+      return `<span class="m-bigop">${glyph}</span>${up?`<sup>${up}</sup>`:''}${down?`<sub>${down}</sub>`:''}`;
+    }
 
     function token() {
       while (i<n && sp(tex[i])) i++;
@@ -192,6 +246,15 @@ const MATH = (function () {
       return token();
     }
     function cmd(name) {
+      if (name === 'limits') { limitsMode = 'limits'; return ''; }
+      if (name === 'nolimits') { limitsMode = 'nolimits'; return ''; }
+      if (name === 'displaystyle') { styleMode = 'display'; return ''; }
+      if (name === 'textstyle' || name === 'scriptstyle' || name === 'scriptscriptstyle') { styleMode = 'text'; return ''; }
+      if (name in BIGOPS) return bigOp(name);
+      if (name === 'pmod') { const a = scriptArg(); return `<span class="m-op"> mod </span><span class="m-paren">(</span>${a}<span class="m-paren">)</span>`; }
+      if (name === 'pod') { const a = scriptArg(); return `<span class="m-paren">(</span>${a}<span class="m-paren">)</span>`; }
+      if (name === 'bmod' || name === 'mod') return `<span class="m-op"> mod </span>`;
+      if (name in OPNAMES) return `<span class="m-op">${name}</span>`;
       if (name in SYM) return SYM[name];
       if (name === 'frac' || name === 'dfrac' || name === 'tfrac' || name === 'cfrac') {
         const a = scriptArg(), b = scriptArg();
@@ -207,32 +270,59 @@ const MATH = (function () {
         const body = scriptArg();
         return `<span class="m-sqrt">${idx}<span class="m-radic">√</span><span class="m-body">${body}</span></span>`;
       }
+      if (name === 'underline') { return `<span class="m-under">${scriptArg()}</span>`; }
+      if (name === 'overbrace') { return `<span class="m-obrace">${scriptArg()}</span>`; }
+      if (name === 'underbrace') { return `<span class="m-ubrace">${scriptArg()}</span>`; }
+      if (name === 'overset' || name === 'stackrel') { const top = scriptArg(); const base = scriptArg(); return `<span class="m-stack"><span class="m-up">${top}</span><span class="m-base">${base}</span></span>`; }
+      if (name === 'underset') { const bot = scriptArg(); const base = scriptArg(); return `<span class="m-stack"><span class="m-base">${base}</span><span class="m-down">${bot}</span></span>`; }
       if (name in FONT) { const c = scriptArg(); const cls = FONT[name]; return cls ? `<span class="${cls}">${c}</span>` : c; }
       if (name in ACCENTS) { const c = scriptArg(); return `<span class="${ACCENTS[name]}"><span class="m-acc">${c}</span></span>`; }
+      if (name === 'mathscr') { return `<span class="m-scr">${scriptArg()}</span>`; }
+      if (name === 'mathbb' || name === 'Bbb') { return bbArg(); }
+      if (name === 'boldsymbol' || name === 'bm') { return `<span class="m-bf">${scriptArg()}</span>`; }
       if (name === 'text' || name === 'textnormal' || name === 'mbox') { return `<span class="m-text">${scriptArg()}</span>`; }
       if (name === 'ce') { return `<span class="m-ce">${scriptArg().replace(/->/g,'→').replace(/<=>/g,'⇌').replace(/<=/g,'≤')}</span>`; }
       if (name === 'operatorname') { return `<span class="m-op">${scriptArg()}</span>`; }
       if (name === 'left' || name === 'right' || name === 'bigl'||name==='Bigl'||name==='biggl'||name==='Biggl'||name==='bigr'||name==='Bigr'||name==='biggr'||name==='Biggr'||name==='big'||name==='Big'||name==='bigg'||name==='Bigg') { while(i<n && sp(tex[i])) i++; const d = tex[i++]||''; return `<span class="m-delim">${eh(d)}</span>`; }
-      if (name === 'begin') { while(i<n && sp(tex[i])) i++; let env=''; if (tex[i]==='{'){ i++; env=seqRaw('}'); if (tex[i]==='}') i++; } return envBlock(env); }
+      if (name === 'begin') {
+        while(i<n && sp(tex[i])) i++;
+        let env='';
+        if (tex[i]==='{'){ i++; env=seqRaw('}'); if (tex[i]==='}') i++; }
+        env = env.replace(/\*$/,'');
+        let cols='';
+        if (env==='array'){ while(i<n&&sp(tex[i]))i++; if(tex[i]==='{'){ i++; cols=seqRaw('}'); if(tex[i]==='}')i++; } }
+        return envBlock(env, cols);
+      }
       if (name === 'end') { while(i<n && sp(tex[i])) i++; if (tex[i]==='{'){ i++; seqRaw('}'); if (tex[i]==='}') i++; } return ''; }
       if (name === 'tag'||name==='label'||name==='nonumber'||name==='notag'||name==='color'||name==='textcolor') { scriptArg(); if (name==='color'||name==='textcolor') return scriptArg(); return ''; }
       if (name === 'mathopen'||name==='mathclose'||name==='mathord'||name==='mathbin'||name==='mathrel'||name==='mathop') { return scriptArg(); }
       return `<span class="m-unknown" title="暂不支持的命令">${eh('\\'+name)}</span>`;
     }
     function seqRaw(stop) { let s=''; while (i<n && tex[i]!==stop) { s+=tex[i++]; } return s; }
-    function envBlock(env) {
+    function envBlock(env, cols) {
       const target = '\\end{'+env+'}';
       let body='';
       while (i<n) { if (tex.substr(i, target.length) === target) { i += target.length; break; } body += tex[i++]; }
-      const cls = env==='pmatrix'?'m-paren':env==='bmatrix'?'m-bracket':env==='Bmatrix'?'m-brace':env==='vmatrix'?'m-vbar':env==='Vmatrix'?'m-Vbar':'m-none';
       const rows = body.split(/\\\\/).map(r=>r.trim()).filter(r=>r.length);
-      if (env === 'cases') {
-        let h = '<span class="m-cases"><span class="m-brace">{</span><table class="m-matrix">';
+      if (env === 'cases' || env === 'rcases' || env === 'dcases') {
+        const brace = (env === 'rcases' || env === 'dcases') ? '}' : '{';
+        let h = `<span class="m-cases"><span class="m-brace">${brace}</span><table class="m-matrix">`;
         for (const r of rows) { const c = r.split('&'); h += '<tr>'+c.map(x=>`<td>${render(x,false)}</td>`).join('')+'</tr>'; }
         return h + '</table></span>';
       }
+      const clsMap = { matrix:'m-none', smallmatrix:'m-small', aligned:'m-none', gathered:'m-none', array:'m-none',
+        pmatrix:'m-paren', bmatrix:'m-bracket', Bmatrix:'m-brace', vmatrix:'m-vbar', Vmatrix:'m-Vbar' };
+      const cls = clsMap[env] || 'm-none';
+      const colSpec = (env === 'array' && cols) ? cols.replace(/[^lcr|]/g,'').split('').filter(c=>c!=='|') : null;
       let h = `<span class="m-env ${cls}"><table class="m-matrix">`;
-      for (const r of rows) { const c = r.split('&'); h += '<tr>'+c.map(x=>`<td>${render(x,false)}</td>`).join('')+'</tr>'; }
+      rows.forEach(r => {
+        const cells = r.split('&');
+        h += '<tr>' + cells.map((x, ci) => {
+          const al = colSpec ? (colSpec[ci] || 'c') : 'c';
+          const style = al === 'l' ? ' style="text-align:left"' : al === 'r' ? ' style="text-align:right"' : '';
+          return `<td${style}>${render(x, false)}</td>`;
+        }).join('') + '</tr>';
+      });
       return h + '</table></span>';
     }
     function seq(stop) {
@@ -250,7 +340,21 @@ const MATH = (function () {
   }
   return { render };
 })();
-function renderMath(tex, display) { return MATH.render(tex, display); }
+function renderMath(tex, display) {
+  if (typeof katex !== 'undefined') {
+    try {
+      return katex.renderToString(tex, {
+        displayMode: !!display,
+        throwOnError: false,
+        strict: false,
+        trust: false
+      });
+    } catch (e) {
+      /* fall through to the custom renderer on any KaTeX failure */
+    }
+  }
+  return MATH.render(tex, display);
+}
 
 /* ==========================================================================
  * 2. Markdown 解析器
@@ -671,7 +775,7 @@ const MD = (function () {
   function isBlockStart(l) {
     return RE.fence.test(l) || RE.heading.test(l) || RE.hr.test(l) || RE.quote.test(l) ||
            RE.item.test(l) || RE.github.test(l) || RE.fndef.test(l) || /^ {0,3}</.test(l) ||
-           /^ {0,3}:::[a-z]/i.test(l) || /^ {0,3}[!?]{3,}/.test(l);
+           /^ {0,3}:::[a-z]/i.test(l) || /^ {0,3}[!?]{3,}/.test(l) || /^\s*\$\$/.test(l);
   }
   function admBlock(type, customTitle, raw, ctx, collapsible, expanded) {
     const labels = { note:'注释', tip:'提示', info:'信息', warning:'警告', danger:'危险', success:'成功', failure:'失败', bug:'缺陷', question:'疑问', quote:'引用', abstract:'摘要', example:'示例', caution:'注意', important:'重要' };
