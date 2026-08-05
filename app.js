@@ -14,6 +14,12 @@ const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
 const escapeHtml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const escapeAttr = s => escapeHtml(s).replace(/"/g, '&quot;');
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+// Firefly 主题仅支持 zh_CN/zh_TW/en/ja/ru，将旧格式或已弃用语言归一化
+const normalizeLang = v => {
+  const map = { 'zh-cn': 'zh_CN', 'zh_CN': 'zh_CN', 'zh-tw': 'zh_TW', 'zh_TW': 'zh_TW',
+                'en': 'en', 'ja': 'ja', 'ru': 'ru' };
+  return map[String(v || '').toLowerCase()] || '';
+};
 
 function debounce(fn, ms) {
   let t; return function (...a) { clearTimeout(t); t = setTimeout(() => fn.apply(this, a), ms); };
@@ -301,22 +307,21 @@ const MD = (function () {
     s = s.replace(/\[([^\]]*)\]\(([^()\s]+(?:\([^()]*\)[^()\s]*)*)(?:\s+["']([^"']*)["'])?\)/g,
       (m, txt, url, title) => put(`<a href="${escapeAttr(safeUrl(unesc(url)))}"${title ? ` title="${q(title)}"` : ''}${/^https?:/i.test(url) ? ' target="_blank" rel="noopener"' : ''}>${inlineRaw(txt, ctx)}</a>`));
 
-    // 8.5) Wiki Link 内部链接 [[slug]] / [[slug|别名]] / [[#标题]] / [[slug#标题|别名]]；![[slug]] 渲染为文章卡片
-    s = s.replace(/(!?)\[\[([^\]]+?)\]\]/g, (m, bang, inner) => {
+    // 8.5) Wiki Link 内部链接 [[slug]] / [[slug|别名]] / [[#标题]] / [[slug#标题|别名]]
+    // 单独成段的 [[slug]] 在区块层渲染为文章卡片（见 parseBlocks）；此处仅处理行内链接
+    s = s.replace(/\[\[([^\]]+?)\]\]/g, (m, inner) => {
       let target = inner.trim(), alias = '';
       const bar = target.indexOf('|');
       if (bar >= 0) { alias = target.slice(bar + 1).trim(); target = target.slice(0, bar).trim(); }
       const hash = target.indexOf('#');
-      const slug = hash >= 0 ? target.slice(0, hash) : target;
+      const slug = (hash >= 0 ? target.slice(0, hash) : target).trim();
       const heading = hash >= 0 ? target.slice(hash) : '';
       let href, text;
       if (!slug) { href = heading || '#'; text = alias || heading.replace(/^#/, ''); }
-      else { href = '/posts/' + slug.replace(/^\/+|\/+$/g, '') + '/' + heading; text = alias || slug.split('/').pop(); }
-      if (bang) {
-        return put(`<a href="${escapeAttr(href)}" class="wiki-card"><svg class="ico" aria-hidden="true"><use href="#i-wikilink"/></svg>` +
-          `<span class="wc-body"><span class="wc-title">${inlineRaw(text, ctx)}</span>` +
-          `<span class="wc-path">${escapeHtml(href)}</span></span>` +
-          `<span class="wc-tag">文章卡片</span></a>`);
+      else {
+        href = '/posts/' + slug.replace(/^\/+|\/+$/g, '') + '/' + heading;
+        const doc = (Store.docs() || []).find(d => ((d.meta && d.meta.slug) || '').trim() === slug);
+        text = alias || (doc ? (doc.meta.title || doc.name) : slug.split('/').pop());
       }
       return put(`<a href="${escapeAttr(href)}" class="wiki-link"${/^https?:/i.test(href) ? ' target="_blank" rel="noopener"' : ''}>${inlineRaw(text, ctx)}</a>`);
     });
@@ -594,6 +599,10 @@ const MD = (function () {
       const buf = [];
       while (i < lines.length && lines[i].trim() && !isBlockStart(lines[i])) { buf.push(lines[i]); i++; }
       if (!buf.length) { buf.push(lines[i]); i++; }
+      // 单独成段的 [[slug]] → 渲染为文章卡片（Firefly 仅支持 [[slug]]，不支持 ![[slug]]）
+      const paraText = buf.join('\n').trim();
+      const wikiM = paraText.match(/^\[\[([^\]]+?)\]\]\s*$/);
+      if (wikiM) { out += renderWikiCard(wikiM[1], ctx); continue; }
       // Setext 标题
       if (i < lines.length && RE.setext.test(lines[i]) && buf.length === 1) {
         const lv = lines[i].trim()[0] === '=' ? 1 : 2;
@@ -605,6 +614,58 @@ const MD = (function () {
       out += `<p>${inline(buf.join('\n'), ctx)}</p>`;
     }
     return out;
+  }
+
+  /* 单独成段的 wiki 链接 → 文章卡片（标题/描述/时间/分类/标签/封面从本地文档库读取） */
+  const WC_ICONS = {
+    calendar: '<svg class="wc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+    book: '<svg class="wc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
+    tag: '<svg class="wc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>',
+    chevron: '<svg class="wc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>'
+  };
+  function renderWikiCard(inner, ctx) {
+    let target = inner.trim(), alias = '';
+    const bar = target.indexOf('|');
+    if (bar >= 0) { alias = target.slice(bar + 1).trim(); target = target.slice(0, bar).trim(); }
+    const hash = target.indexOf('#');
+    const slug = (hash >= 0 ? target.slice(0, hash) : target).trim();
+    const heading = hash >= 0 ? target.slice(hash) : '';
+    const href = slug ? '/posts/' + slug.replace(/^\/+|\/+$/g, '') + '/' + heading : (heading || '#');
+    const doc = slug ? (Store.docs() || []).find(d => ((d.meta && d.meta.slug) || '').trim() === slug) : null;
+    // 默认封面兜底（与编辑器默认随机封面 API 保持一致）
+    const DEFAULT_COVER = 'https://api.boxmoe.com/random.php';
+    const coverWrap = cover => `<span class="wc-cover-wrap"><img class="wc-cover" src="${escapeAttr(cover || DEFAULT_COVER)}" alt="" loading="lazy"><span class="wc-cover-overlay">${WC_ICONS.chevron}</span></span>`;
+    if (doc) {
+      const m = doc.meta || {};
+      const title = alias || m.title || doc.name || slug;
+      const cover = coverValue(m) || DEFAULT_COVER;
+      const desc = m.description || '';
+      const date = m.published ? String(m.published).slice(0, 10) : '';
+      const cat = m.category || '';
+      const tags = Array.isArray(m.tags) ? m.tags : [];
+      // Firefly/Fuwari 风格：左侧内容（标题带强调线、图标元信息、描述），右侧圆角封面
+      return `<a class="wiki-card rich" href="${escapeAttr(href)}">` +
+        `<span class="wc-body">` +
+          `<span class="wc-title">${escapeHtml(title)}</span>` +
+          `<span class="wc-meta">` +
+            (date ? `<span class="wc-m-item">${WC_ICONS.calendar}<span>${escapeHtml(date)}</span></span>` : '') +
+            (cat ? `<span class="wc-m-item">${WC_ICONS.book}<span>${escapeHtml(cat)}</span></span>` : '') +
+            (tags.length ? `<span class="wc-m-item">${WC_ICONS.tag}<span>${tags.map(t => escapeHtml(t)).join(' / ')}</span></span>` : '') +
+          `</span>` +
+          (desc ? `<span class="wc-desc">${escapeHtml(desc)}</span>` : '') +
+        `</span>` +
+        coverWrap(cover) +
+      `</a>`;
+    }
+    // 目标文章不在本地库：仍渲染为占位卡片（独占段的意图就是卡片，保持视觉一致）
+    const title = alias || slug.split('/').pop();
+    return `<a class="wiki-card rich placeholder" href="${escapeAttr(href)}">` +
+      `<span class="wc-body">` +
+        `<span class="wc-title">${escapeHtml(title)}</span>` +
+        `<span class="wc-meta"><span class="wc-m-item">${WC_ICONS.book}<span>未在本地文档库找到该文章</span></span></span>` +
+      `</span>` +
+      coverWrap(DEFAULT_COVER) +
+    `</a>`;
   }
 
   function isBlockStart(l) {
@@ -1084,7 +1145,7 @@ function parseMarkdown(text) {
     meta.description = T('description');
     meta.slug = T('slug');
     meta.author = T('author');
-    meta.lang = T('lang');
+    meta.lang = normalizeLang(T('lang'));
     meta.category = T('category');
     meta.tags = Array.isArray(raw.tags) ? raw.tags : (raw.tags ? String(raw.tags).split(/[,、]/).map(s => s.trim()).filter(Boolean) : []);
     meta.draft = /^true$/i.test(T('draft'));
@@ -1447,7 +1508,7 @@ const SLASH = [
   { k: 'mathblock', icon: 'i-math', name: '块级数学公式', desc: '$$...$$ KaTeX' },
   { k: 'mermaid', icon: 'i-mermaid', name: 'Mermaid 图表', desc: '```mermaid' },
   { k: 'wikilink', icon: 'i-wikilink', name: '内部链接', desc: '[[slug|别名]]' },
-  { k: 'wikicard', icon: 'i-wikilink', name: '文章卡片', desc: '![[slug]] 卡片式内链' },
+  { k: 'wikicard', icon: 'i-wikilink', name: '文章卡片', desc: '[[slug]] 卡片式内链（独占一段）' },
   { k: 'codeln', icon: 'i-code', name: '代码块（行号）', desc: '```js showLineNumbers {2}' },
   { k: 'plantuml', icon: 'i-plantuml', name: 'PlantUML 图表', desc: '```plantuml' },
   { k: 'grid', icon: 'i-grid', name: '图片画廊', desc: '[grid cols=3] … [/grid]' },
@@ -1960,7 +2021,7 @@ function fillForm() {
   $('#f-slug').value = m.slug;
   $('#f-slug-as-name').checked = !!m.slugAsName;
   $('#f-author').value = m.author;
-  $('#f-lang').value = m.lang;
+  $('#f-lang').value = normalizeLang(m.lang);
   $('#f-cover-random').value = m.coverRandom;
   $('#f-cover-random-custom').value = m.coverRandomCustom;
   $('#f-cover-id').value = m.coverId;
@@ -2143,7 +2204,8 @@ $('#wcOk').addEventListener('click', () => {
   if (!slug) { toast('请输入文章 slug', 'err'); return; }
   const title = $('#wcTitle').value.trim();
   closeModal('#modalWikicard');
-  Editor.insert(`![[${slug}${title ? '|' + title : ''}]]`);
+  // 独占一段才会被渲染为卡片：前后补空行确保独立成段（Firefly 仅支持 [[slug]]，不支持 ![[slug]]）
+  Editor.insert(`\n\n[[${slug}${title ? '|' + title : ''}]]\n\n`);
 });
 /* PlantUML */
 $('#puOk').addEventListener('click', () => {
