@@ -395,7 +395,7 @@
               <button class="tb-btn has-text" data-cmd="plantuml" title="PlantUML 图表 ```plantuml"><svg class="ico"><use href="#i-plantuml"/></svg><span>PlantUML</span></button>
             </div>
           </div>
-          <button class="tb-btn" data-cmd="grid" title="图片画廊 [grid cols=3] … [/grid]"><svg class="ico"><use href="#i-grid"/></svg></button>
+          <button class="tb-btn" data-cmd="grid" title="图片画廊 [grid] … [/grid]"><svg class="ico"><use href="#i-grid"/></svg></button>
           <button class="tb-btn" data-cmd="admonition" title="提示块（GitHub / Docusaurus / Obsidian）"><svg class="ico"><use href="#i-alert"/></svg></button>
         </div>
         <div class="tb-sep"></div>
@@ -651,10 +651,7 @@ Bob --> Alice: 响应
       <div class="field"><label>图片地址（每行一个，也支持 <code>![说明](url)</code>）</label>
         <textarea id="gdUrls" rows="5" placeholder="https://example.com/a.jpg&#10;https://example.com/b.jpg&#10;![风景](https://example.com/c.jpg)"></textarea>
       </div>
-      <div class="field-row">
-        <div class="field"><label>列数（1–6，留空则自适应）</label><input type="number" id="gdCols" min="1" max="6" placeholder="3"></div>
-      </div>
-      <p class="hint">生成 <code>[grid cols=N] … [/grid]</code>，窄屏自动降列。</p>
+      <p class="hint">生成 <code>[grid] … [/grid]</code>，最多支持并排展示 4 张，窄屏自动降列。</p>
     </div>
     <footer><button class="btn btn-ghost" data-close>取消</button><button class="btn btn-primary" id="gdOk">插入</button></footer>
   </div>
@@ -772,7 +769,7 @@ Bob --> Alice: 响应
             <tr><td>代码块自动换行</td><td><code>```js wrap</code></td></tr>
             <tr><td>内部链接</td><td><code>[[slug]]</code> / <code>[[slug|别名]]</code></td></tr>
             <tr><td>文章卡片</td><td><code>[[slug]]</code> / <code>[[slug|标题]]</code>（独占一段）</td></tr>
-            <tr><td>图片画廊</td><td><code>[grid] … [/grid]</code>，可加 <code>cols=3</code></td></tr>
+            <tr><td>图片画廊</td><td><code>[grid] … [/grid]</code>，最多并排 4 张</td></tr>
             <tr><td>封面随机图 id</td><td>封面选「随机 API」后填 <code>06</code> → <code>random.php?06</code>，每篇不同</td></tr>
             <tr><td>代码组</td><td><code>::: code-group labels=[…]</code></td></tr>
             <tr><td>PlantUML</td><td><code>```plantuml</code></td></tr>
@@ -809,6 +806,186 @@ Bob --> Alice: 响应
   </div>
 </div>
 
+<!-- 首次打开示例正文：assets/sample.md 为可编辑源；下方 text/markdown 块为 file:// 双击打开的离线兜底，需与之保持一致 -->
+<script type="text/markdown" id="firefly-sample">
+# 欢迎使用 Firefly Markdown
+
+这是一款 **纯前端 · 零依赖 · 离线可用** 的博文生成器，为 [Astro-Firefly](https://github.com/CuteLeaf/Firefly) 主题量身打造。支持完整 FrontMatter、实时预览与一键导出。
+
+> [!TIP]
+> 输入 `/` 可以唤出快捷命令菜单，所有语法都能一键插入。
+
+## 一、基础语法
+
+### 文字样式
+
+**加粗**、*斜体*、***加粗斜体***、~~删除线~~、`行内代码`、:spoiler[剧透遮罩，鼠标移上去显示]。
+
+### 列表
+
+无序列表：
+
+- 左侧填写文章信息
+- 中间编写正文
+- 右侧实时预览
+
+有序列表：
+
+1. 编写 FrontMatter
+2. 编写正文
+3. 导出 MD
+
+任务清单：
+
+- [x] 完整 FrontMatter
+- [x] 实时预览
+- [ ] 写一篇真正的文章
+
+### 引用与分割线
+
+> 这是一段引用文字，可以跨越多行书写。
+
+---
+
+## 二、提示块（三种风格）
+
+GitHub 风格：
+
+> [!NOTE]
+> GitHub 风格的提示块，支持 note / tip / warning / danger 等类型。
+
+Docusaurus 风格：
+
+:::tip[小技巧]
+输入 `/` 唤出命令菜单，选择「提示块」即可插入。
+:::
+
+Obsidian 风格：
+
+!!! warning "注意"
+    这是 Obsidian 风格的提示块，标题写在引号里。
+
+## 三、代码块
+
+带文件名与行高亮：
+
+```js title="hello.js" {2}
+// 代码块自带语法高亮，可写 title="文件名" 与行标记 {2}
+const hello = (name) => `Hello, ${name}!`;
+console.log(hello('Firefly'));
+```
+
+显示行号（showLineNumbers）：
+
+```python showLineNumbers
+def fib(n):
+    a, b = 0, 1
+    for _ in range(n):
+        a, b = b, a + b
+    return a
+```
+
+代码组（多语言切换）：
+
+::: code-group labels=[Shell,PowerShell]
+```bash
+npm install
+```
+```powershell
+pnpm add
+```
+:::
+
+## 四、数学公式（KaTeX）
+
+行内公式：质能方程 $E = mc^2$ 与欧拉恒等式 $e^{i\pi} + 1 = 0$。
+
+块级公式：
+
+$
+\int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}
+$
+
+$
+\begin{pmatrix} a & b \\ c & d \end{pmatrix},\quad
+\sum_{n=1}^{\infty} \frac{1}{n^2} = \frac{\pi^2}{6}
+$
+
+## 五、图表
+
+Mermaid 流程图：
+
+```mermaid
+graph TD
+  A[编写] --> B[预览]
+  B --> C[导出 MD]
+  C --> D[发布到 Firefly]
+```
+
+PlantUML 图（构建时渲染为静态 SVG）：
+
+```plantuml
+@startuml
+Alice -> Bob: 认证请求
+Bob --> Alice: 响应
+@enduml
+```
+
+## 六、内部链接与文章卡片
+
+行内内部链接：[[firefly|Firefly 主题介绍]]（自动使用目标文章标题）。
+
+独占一段的内部链接会渲染为文章卡片（需目标文章已存在于本地文档库，否则显示占位卡片）[^1]：
+
+[[firefly]]
+
+## 七、第三方嵌入
+
+GitHub 仓库卡片：
+
+::github{repo="CuteLeaf/Firefly"}
+
+视频嵌入（B站 / YouTube，直接插入 `<iframe>`）：
+
+<iframe width="100%" height="468" src="https://www.youtube.com/embed/dQw4w9WgXcQ" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+
+图片画廊（[grid] … [/grid]，最多并排 4 张）：
+
+[grid]
+![封面一](https://api.boxmoe.com/random.php?1)
+![封面二](https://api.boxmoe.com/random.php?2)
+![封面三](https://api.boxmoe.com/random.php?3)
+![封面四](https://api.boxmoe.com/random.php?4)
+[/grid]
+
+## 八、表格与脚注
+
+| 功能 | 状态 | 说明 |
+| :--- | :--: | ---: |
+| 离线可用 | ✅ | 双击 HTML 即可 |
+| 自动缓存 | ✅ | 刷新不丢失 |
+| 三端适配 | ✅ | 桌面 / 平板 / 手机 |
+
+脚注示例：本工具完全离线运行[^2]。
+
+[^1]: 文章卡片会读取目标文章的标题、描述、发布时间、分类、标签与封面。
+[^2]: 数据保存在浏览器 localStorage，不会上传到任何服务器。
+
+> [!NOTE]
+> 在左侧「基础信息」填写好标题、slug、分类等后，点击顶部「导出 MD」即可生成符合 Firefly 主题的 Markdown 文件。
+</script>
+<script>
+(function(){
+  window.FIREFLY_SAMPLE = "";
+  function fromEl(){ var el = document.getElementById("firefly-sample"); if (el) window.FIREFLY_SAMPLE = el.textContent.trim(); }
+  fromEl();
+  if (location.protocol !== "file:") {
+    fetch("assets/sample.md").then(function(r){ return r.ok ? r.text() : null; })
+      .then(function(t){ if (t != null) window.FIREFLY_SAMPLE = t.trim(); })
+      .catch(function(){ /* keep embedded offline fallback */ });
+  }
+})();
+</script>
 <script src="app.js"></script>
 </body>
 </html>

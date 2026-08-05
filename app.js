@@ -457,12 +457,12 @@ const MD = (function () {
         continue;
       }
 
-      // 图片画廊 [grid] / [grid cols=3] / [grid 3] ... [/grid]
+      // 图片画廊 [grid] … [/grid]（最多并排 4 张；可写 cols=N 显式指定 1–4 列）
       const mGrid = /^ {0,3}\[grid((?:\s+[^\]]*)?)\]\s*$/i.exec(line);
       if (mGrid) {
         const gArg = (mGrid[1] || '').trim();
-        const gc = /(?:cols?|columns)\s*=\s*(\d)/i.exec(gArg) || /^(\d)$/.exec(gArg);
-        const cols = gc ? Math.min(6, Math.max(1, +gc[1])) : 0;
+        const gc = /cols\s*=\s*"?(\d)"?/i.exec(gArg) || /^"?(\d)"?$/.exec(gArg);
+        const cols = gc ? Math.min(4, Math.max(1, +gc[1])) : 4;
         const buf = []; i++;
         while (i < lines.length && !/^ {0,3}\[\/grid\]\s*$/i.test(lines[i])) { buf.push(lines[i]); i++; }
         if (i < lines.length) i++;
@@ -482,7 +482,7 @@ const MD = (function () {
       // 代码组 ::: code-group labels=[...]
       let mCG = /^ {0,3}:::\s*code-group\s*(?:labels=\[([^\]]*)\])?\s*$/i.exec(line);
       if (mCG) {
-        const labels = (mCG[1] || '').split(',').map(s => s.trim()).filter(Boolean);
+        const labels = (mCG[1] || '').split(',').map(s => s.trim().replace(/^["']|["']$/g, '').trim()).filter(Boolean);
         const blocks = []; i++;
         while (i < lines.length && !/^ {0,3}:::\s*$/.test(lines[i])) {
           const fm = RE.fence.exec(lines[i]);
@@ -869,71 +869,7 @@ const DEFAULT_META = () => ({
   extras: []
 });
 
-const SAMPLE = `# 欢迎使用 Firefly Markdown
-
-这是一款 **纯前端 · 零依赖 · 离线可用** 的博文生成器，为 [Astro-Firefly](https://github.com/CuteLeaf/Firefly) 主题量身打造。
-
-## 快速开始
-
-1. 在左侧填写文章信息，FrontMatter 会自动生成
-2. 在中间编写正文，支持工具栏、快捷键与 \`/\` 命令
-3. 右侧实时预览，确认无误后点击「导出 MD」
-
-> [!TIP]
-> 输入 \`/\` 可以唤出快捷命令菜单，试试看。
-
-## 扩展语法演示
-
-剧透遮罩：这里有个秘密 :spoiler[其实我没有秘密 **嘿嘿**]，把鼠标移上去看看。
-
-任务清单：
-
-- [x] 支持完整 FrontMatter
-- [x] 内置 Markdown 编辑器
-- [ ] 写一篇真正的文章
-
-\`\`\`js title="hello.js" {2}
-// 代码块自带语法高亮，可写 title="文件名" 与行标记 {2}
-const hello = (name) => \`Hello, \${name}!\`;
-console.log(hello('Firefly'));
-\`\`\`
-
-::github{repo="CuteLeaf/Firefly"}
-
-## 数学公式（KaTeX）
-
-行内公式：质能方程 $E = mc^2$ 与欧拉恒等式 $e^{i\\pi} + 1 = 0$。
-
-$$
-\\int_{-\\infty}^{\\infty} e^{-x^2}\\,dx = \\sqrt{\\pi}
-$$
-
-块级公式支持上标、下标、分式、根号与矩阵：
-
-$$
-\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix},\\quad
-\\sum_{n=1}^{\\infty} \\frac{1}{n^2} = \\frac{\\pi^2}{6}
-$$
-
-## 提示框与图表
-
-:::tip[支持多种风格]
-除了 GitHub 风格，还支持 Docusaurus 的 \`:::tip\` 与 Obsidian 的 \`!!! note\`。
-:::
-
-\`\`\`mermaid
-graph TD
-  A[编写] --> B[预览]
-  B --> C[导出 MD]
-  C --> D[发布到 Firefly]
-\`\`\`
-
-| 功能 | 状态 | 说明 |
-| :--- | :--: | ---: |
-| 离线可用 | ✅ | 双击 HTML 即可 |
-| 自动缓存 | ✅ | 刷新不丢失 |
-| 三端适配 | ✅ | 桌面 / 平板 / 手机 |
-`;
+const SAMPLE = (typeof window !== 'undefined' && window.FIREFLY_SAMPLE) ? window.FIREFLY_SAMPLE : '';
 
 const state = { meta: DEFAULT_META(), content: SAMPLE, docId: null, docName: '未命名文章' };
 
@@ -1334,7 +1270,7 @@ const CMD = {
   wikicard: () => openModal('#modalWikicard', () => { $('#wcSlug').value = ''; $('#wcTitle').value = Editor.sel().t || ''; $('#wcSlug').focus(); }),
   codeln: () => openModal('#modalCodeln', () => { $('#clLang').value = 'js'; $('#clStart').value = ''; $('#clNumbers').checked = true; $('#clWrap').checked = false; $('#clMarks').value = ''; $('#clCode').value = Editor.sel().t || ''; $('#clLang').focus(); }),
   plantuml: () => openModal('#modalPlantuml', () => { $('#puText').value = '@startuml\nAlice -> Bob: 认证请求\nBob --> Alice: 响应\n@enduml'; $('#puText').focus(); }),
-  grid: () => openModal('#modalGrid', () => { $('#gdUrls').value = ''; $('#gdCols').value = ''; $('#gdUrls').focus(); }),
+  grid: () => openModal('#modalGrid', () => { $('#gdUrls').value = ''; $('#gdUrls').focus(); }),
   codegroup: () => openModal('#modalCodegroup', () => { $('#cgTabs').innerHTML = ''; cgAddRow('js', 'JavaScript', 'console.log("Hi");'); $('#cgAdd').focus(); }),
   spoiler: () => Editor.wrap(':spoiler[', ']', '隐藏内容'),
   find: () => toggleFind(true),
@@ -1511,7 +1447,7 @@ const SLASH = [
   { k: 'wikicard', icon: 'i-wikilink', name: '文章卡片', desc: '[[slug]] 卡片式内链（独占一段）' },
   { k: 'codeln', icon: 'i-code', name: '代码块（行号）', desc: '```js showLineNumbers {2}' },
   { k: 'plantuml', icon: 'i-plantuml', name: 'PlantUML 图表', desc: '```plantuml' },
-  { k: 'grid', icon: 'i-grid', name: '图片画廊', desc: '[grid cols=3] … [/grid]' },
+  { k: 'grid', icon: 'i-grid', name: '图片画廊', desc: '[grid] … [/grid]（最多并排 4 张）' },
   { k: 'codegroup', icon: 'i-codegroup', name: '代码组', desc: '::: code-group' },
   { k: 'admonition', icon: 'i-alert', name: '提示块（GitHub）', desc: '> [!TIP]' },
   { k: 'admonition-d', icon: 'i-alert', name: '提示块（Docusaurus）', desc: ':::tip' },
@@ -2218,13 +2154,12 @@ $('#puOk').addEventListener('click', () => {
 $('#gdOk').addEventListener('click', () => {
   const lines = ($('#gdUrls').value || '').split('\n').map(s => s.trim()).filter(Boolean);
   if (!lines.length) { toast('请至少填写一个图片地址', 'err'); return; }
-  const cols = clamp(parseInt($('#gdCols').value, 10) || 0, 0, 6);
   const items = lines.map(l => {
     const m = /^!\[([^\]]*)\]\(([^)]+)\)$/.exec(l);
     return m ? `![${m[1]}](${m[2]})` : `![image](${l})`;
   }).join('\n');
   closeModal('#modalGrid');
-  Editor.insert('\n[grid' + (cols ? ' cols=' + cols : '') + ']\n' + items + '\n[/grid]\n\n');
+  Editor.insert('\n[grid]\n' + items + '\n[/grid]\n\n');
 });
 /* 代码组：动态标签页 */
 function cgAddRow(lang, label, code) {
