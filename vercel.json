@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "framework": null,
+  "buildCommand": null,
+  "outputDirectory": ".",
+  "functions": {
+    "api/github.js": {
+      "runtime": "nodejs20.x"
+    }
+  }
+}
