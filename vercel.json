@@ -4,8 +4,6 @@
   "buildCommand": null,
   "outputDirectory": ".",
   "functions": {
-    "api/github.js": {
-      "runtime": "nodejs20.x"
-    }
+    "api/github.js": {}
   }
 }
