@@ -2716,6 +2716,20 @@ const GH = (function () {
   function getToken() { try { return localStorage.getItem(K_TOKEN) || ''; } catch (e) { return ''; } }
   function setToken(t) { try { if (t) localStorage.setItem(K_TOKEN, t); else localStorage.removeItem(K_TOKEN); } catch (e) {} }
 
+  // 服务器模式（后端代理 GitHub OAuth）：会话令牌存于本浏览器，GitHub 凭证只在后端
+  const K_SERVER_TOKEN = 'fmd.server.token.v1';
+  const K_SERVER_LOGIN = 'fmd.server.login.v1';
+  const K_BACKEND = 'fmd.backend.url.v1';
+  function serverToken() { try { return localStorage.getItem(K_SERVER_TOKEN) || ''; } catch (e) { return ''; } }
+  function serverLogin() { try { return localStorage.getItem(K_SERVER_LOGIN) || ''; } catch (e) { return ''; } }
+  function backendUrl() { try { return (localStorage.getItem(K_BACKEND) || '').replace(/\/+$/, ''); } catch (e) { return ''; } }
+  function setServerSession(token, login) {
+    try {
+      if (token) { localStorage.setItem(K_SERVER_TOKEN, token); if (login) localStorage.setItem(K_SERVER_LOGIN, login); }
+      else { localStorage.removeItem(K_SERVER_TOKEN); localStorage.removeItem(K_SERVER_LOGIN); }
+    } catch (e) {}
+  }
+
   function b64e(s) { return btoa(unescape(encodeURIComponent(s))); }
   function b64d(b) { return decodeURIComponent(escape(atob(b.replace(/\s/g, '')))); }
 
@@ -2724,7 +2738,26 @@ const GH = (function () {
 
   async function api(path, opts) {
     opts = opts || {};
+    const srvTok = serverToken(), base = backendUrl();
     const headers = { 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+    if (srvTok && base) {
+      // 服务器模式：经后端 /api/github 代理（后端持 GitHub 凭证，前端只持会话令牌）
+      headers['Authorization'] = 'Bearer ' + srvTok;
+      if (opts.body) headers['Content-Type'] = 'application/json';
+      const res = await fetch(base + '/api/github' + path, {
+        method: opts.method || 'GET',
+        headers,
+        body: opts.body ? JSON.stringify(opts.body) : undefined
+      });
+      let data = {};
+      try { data = await res.json(); } catch (e) {}
+      if (!res.ok) {
+        const msg = (data && (data.message || data.error_description)) || ('HTTP ' + res.status);
+        throw new Error(msg);
+      }
+      return data;
+    }
+    // 默认：纯前端 PAT 直连 GitHub（无需后端）
     const tk = getToken();
     if (tk) headers['Authorization'] = 'Bearer ' + tk;
     if (opts.body) headers['Content-Type'] = 'application/json';
@@ -2862,7 +2895,8 @@ const GH = (function () {
     return fileSlug(state.meta);
   }
 
-  return { cfg, saveCfg, getToken, setToken, fetchUser, login, logout, listPosts, pullAll, publishCurrent, publishAll, deleteRemoteCurrent, getUser: () => user };
+  return { cfg, saveCfg, getToken, setToken, fetchUser, login, logout, listPosts, pullAll, publishCurrent, publishAll, deleteRemoteCurrent, getUser: () => user,
+    serverToken, serverLogin, backendUrl, setServerSession };
 })();
 
 /* ---------- GitHub 同步 UI ---------- */
@@ -2871,6 +2905,7 @@ function openGhSync() {
   $('#ghsOwner').value = c.owner; $('#ghsRepo').value = c.repo; $('#ghsBranch').value = c.branch;
   $('#ghsPath').value = c.path;
   $('#ghsPat').value = GH.getToken() || '';
+  $('#ghsBackend').value = GH.backendUrl() || '';
   $('#ghsMsg').textContent = '';
   refreshGhUI();
   openModal('#modalGhSync');
@@ -2878,15 +2913,22 @@ function openGhSync() {
 function refreshGhUI() {
   const token = GH.getToken(), u = GH.getUser(), status = $('#ghsStatus');
   if (!status) return;
-  if (token && u) status.innerHTML = '<span class="gh-dot on"></span> 已登录为 <b>' + escapeHtml(u.login) + '</b>';
-  else if (token) status.innerHTML = '<span class="gh-dot on"></span> 已登录';
+  const srvTok = GH.serverToken(), srvLogin = GH.serverLogin();
+  if (srvTok && srvLogin) status.innerHTML = '<span class="gh-dot on"></span> 已通过服务器登录为 <b>' + escapeHtml(srvLogin) + '</b>';
+  else if (token && u) status.innerHTML = '<span class="gh-dot on"></span> 已登录为 <b>' + escapeHtml(u.login) + '</b>';
+  else if (token) status.innerHTML = '<span class="gh-dot on"></span> 已登录（PAT）';
   else status.innerHTML = '<span class="gh-dot"></span> 未登录';
+  const online = !!(token || srvTok);
   $('#ghsLogin').disabled = !!token;
   $('#ghsLogout').disabled = !token;
-  $('#ghsPull').disabled = !token;
-  $('#ghsPush').disabled = !token;
-  $('#ghsPushAll').disabled = !token;
-  $('#ghsDel').disabled = !token;
+  $('#ghsPull').disabled = !online;
+  $('#ghsPush').disabled = !online;
+  $('#ghsPushAll').disabled = !online;
+  $('#ghsDel').disabled = !online;
+  // 服务器模式 UI 同步
+  const be = $('#ghsBackend'); if (be) be.value = GH.backendUrl() || '';
+  const sstat = $('#ghsServerStatus'); if (sstat) sstat.textContent = (srvTok && srvLogin) ? ('当前：服务器会话（' + srvLogin + '）') : '';
+  const slo = $('#ghsServerLogout'); if (slo) slo.hidden = !(srvTok && srvLogin);
 }
 $('#btnGh').addEventListener('click', openGhSync);
 ['ghsOwner', 'ghsRepo', 'ghsBranch', 'ghsPath'].forEach(id => {
@@ -2908,6 +2950,21 @@ $('#ghsLogin').addEventListener('click', async () => {
   }
 });
 $('#ghsLogout').addEventListener('click', () => { GH.logout(); refreshGhUI(); $('#ghsMsg').textContent = '已退出登录'; });
+// 服务器模式：后端地址、OAuth 登录、登出
+$('#ghsBackend').addEventListener('change', e => { try { localStorage.setItem('fmd.backend.url.v1', e.target.value.trim()); } catch (err) {} refreshGhUI(); });
+$('#ghsServerLogin').addEventListener('click', () => {
+  const base = $('#ghsBackend').value.trim().replace(/\/+$/, '');
+  if (!base) { toast('请先填写后端地址', 'err'); $('#ghsMsg').textContent = '请先填写后端地址（如 https://fmd-api.your.workers.dev）'; return; }
+  try { localStorage.setItem('fmd.backend.url.v1', base); } catch (e) {}
+  const redirect = encodeURIComponent(location.origin + location.pathname);
+  window.location.href = base + '/api/auth/login?redirect=' + redirect;
+});
+$('#ghsServerLogout').addEventListener('click', () => {
+  GH.setServerSession('', '');
+  refreshGhUI();
+  $('#ghsMsg').textContent = '已退出服务器登录';
+  toast('已退出服务器登录', 'ok');
+});
 $('#ghsPull').addEventListener('click', async () => {
   const btn = $('#ghsPull'); btn.disabled = true; $('#ghsMsg').textContent = '正在从 GitHub 拉取…';
   try {
@@ -2952,6 +3009,21 @@ $('#ghsDel').addEventListener('click', () => {
 });
 // 启动时静默恢复登录态
 if (GH.getToken()) { GH.fetchUser().then(refreshGhUI).catch(() => {}); }
+// 启动时捕获 OAuth 回跳的 ?token=&login=，存入 localStorage 并清理地址栏
+(function () {
+  try {
+    const params = new URLSearchParams(location.search);
+    const t = params.get('token');
+    if (t) {
+      GH.setServerSession(t, params.get('login') || '');
+      const url = new URL(location.href);
+      url.searchParams.delete('token'); url.searchParams.delete('login');
+      history.replaceState({}, '', url.pathname + url.search);
+      refreshGhUI();
+      toast('已通过服务器登录' + (params.get('login') ? ('：' + params.get('login')) : ''), 'ok');
+    }
+  } catch (e) {}
+})();
 
 /* 暴露给控制台调试 */
 window.FireflyMD = { state, buildFrontMatter, buildFullDoc, render: MD, importText, renderPreview, GH };

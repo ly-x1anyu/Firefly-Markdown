@@ -825,6 +825,16 @@ Bob --> Alice: 响应
         <p class="hint">在 GitHub 生成 Personal Access Token（勾选 <code>repo</code> 权限）后粘贴到上方。Token 仅保存在本浏览器 localStorage。还没有令牌？<a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">前往 github.com/settings/tokens 获取</a>。</p>
       </div>
 
+      <div class="gh-section" id="ghsServerBox">
+        <label class="gh-label">服务器模式（可选 · 免自建 Token）</label>
+        <div class="gh-pat-wrap">
+          <input id="ghsBackend" placeholder="后端地址，如 https://fmd-api.your.workers.dev" autocomplete="off">
+          <button class="btn btn-primary" id="ghsServerLogin"><svg class="ico ico-sm"><use href="#i-github"/></svg> 使用 GitHub 登录</button>
+        </div>
+        <p class="hint">由后端服务代理 GitHub（OAuth 登录，无需自建 Token）。填写后端地址后点登录会跳转到后端完成 GitHub 授权；留空则使用上方的 Personal Access Token 直连模式。<span id="ghsServerStatus"></span></p>
+        <button class="btn btn-ghost" id="ghsServerLogout" hidden>退出服务器登录</button>
+      </div>
+
       <div class="gh-section gh-actions">
         <button class="btn" id="ghsPull"><svg class="ico ico-sm"><use href="#i-download"/></svg> 从 GitHub 拉取全部</button>
         <button class="btn" id="ghsPush"><svg class="ico ico-sm"><use href="#i-upload"/></svg> 发布当前文章</button>
