@@ -2,7 +2,7 @@
 
 # Firefly Markdown
 
-**一款纯前端、零依赖、离线可用的静态博客 Markdown 博文生成器**
+**一款纯前端、零外部依赖、离线可用的静态博客 Markdown 博文生成器**
 
 专为 [Firefly](https://github.com/CuteLeaf/Firefly) 主题设计 · 可视化填写文章信息 · 一键生成标准 YAML FrontMatter 博客文章
 
@@ -19,7 +19,7 @@ Firefly-Markdown 是一款**纯原生前端、零第三方依赖**的 Markdown �
 解决静态博客写作痛点：手动写 FrontMatter 繁琐、参数记不住、格式容易报错。
 可视化表单填写、实时预览、自动转义、一键导出标准博客 MD 文件。
 
-**使用方式：下载三个文件放在同一目录，双击 `index.html` 即可。** 不需要 Node、不需要构建、不需要联网。
+**使用方式：下载全部文件放在同一目录，双击 `index.html` 即可。** 不需要 Node、不需要构建、不需要联网。
 
 ---
 
