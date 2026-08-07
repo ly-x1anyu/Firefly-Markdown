@@ -787,6 +787,9 @@ const MD = (function () {
     }
     return `<div class="admonition adm-${escapeHtml(t)}"><div class="adm-title">${escapeHtml(title)}</div>${inner}</div>`;
   }
+  // 代码块唯一 id 计数器（折叠等需要）
+  let _cbUid = 0;
+
   // 把 "1,3-5" 解析成行号集合
   function parseLineMarks(spec) {
     const set = new Set();
@@ -802,47 +805,223 @@ const MD = (function () {
     });
     return set;
   }
-  // 解析代码块 fence 元信息：title="…" / {行标记} / wrap / showLineNumbers / start=N
+
+  // 在已高亮的 HTML 片段内安全注入文本/正则标记（不破坏已有标签）
+  function applyTextMarks(html, patterns) {
+    if (!patterns || !patterns.length) return html;
+    return html.replace(/<[^>]+>|[^<]+/g, seg => {
+      if (seg.charAt(0) === '<') return seg;            // 标签原样保留
+      let s = seg;
+      for (const p of patterns) {
+        if (!p.pattern) continue;
+        if (p.regex) {
+          try { s = s.replace(new RegExp(p.pattern, 'g'), m => `<mark class="mk-text">${m}</mark>`); } catch (e) {}
+        } else {
+          const tag = escapeHtml(p.pattern);
+          s = s.split(p.pattern).join(`<mark class="mk-text">${tag}</mark>`);
+        }
+      }
+      return s;
+    });
+  }
+
+  // 渲染单行 ANSI 转义序列（ansi 代码块）
+  function renderAnsiLine(line) {
+    const fgc = {30:'ansi-black',31:'ansi-red',32:'ansi-green',33:'ansi-yellow',34:'ansi-blue',35:'ansi-magenta',36:'ansi-cyan',37:'ansi-white',
+      90:'ansi-br-black',91:'ansi-br-red',92:'ansi-br-green',93:'ansi-br-yellow',94:'ansi-br-blue',95:'ansi-br-magenta',96:'ansi-br-cyan',97:'ansi-br-white'};
+    const bgc = {40:'ansi-bg-black',41:'ansi-bg-red',42:'ansi-bg-green',43:'ansi-bg-yellow',44:'ansi-bg-blue',45:'ansi-bg-magenta',46:'ansi-bg-cyan',47:'ansi-bg-white',
+      100:'ansi-bg-br-black',101:'ansi-bg-br-red',102:'ansi-bg-br-green',103:'ansi-bg-br-yellow',104:'ansi-bg-br-blue',105:'ansi-bg-br-magenta',106:'ansi-bg-br-cyan',107:'ansi-bg-br-white'};
+    let out = '', last = 0, m; const open = [];
+    const re = /\x1b\[([0-9;]*)m/g;
+    while ((m = re.exec(line))) {
+      if (m.index > last) out += escapeHtml(line.slice(last, m.index));
+      const codes = (m[1] || '0').split(';').map(x => parseInt(x, 10) || 0);
+      if (codes.indexOf(0) >= 0 || codes.indexOf(39) >= 0 || codes.indexOf(49) >= 0) {
+        while (open.length) { out += '</span>'; open.pop(); }
+      } else {
+        for (const c of codes) {
+          if (fgc[c]) { out += '<span class="' + fgc[c] + '">'; open.push(1); }
+          else if (bgc[c]) { out += '<span class="' + bgc[c] + '">'; open.push(1); }
+          else if (c === 1) { out += '<span class="ansi-bold">'; open.push(1); }
+          else if (c === 2) { out += '<span class="ansi-dim">'; open.push(1); }
+          else if (c === 3) { out += '<span class="ansi-italic">'; open.push(1); }
+          else if (c === 4) { out += '<span class="ansi-underline">'; open.push(1); }
+          else if (c === 7) { out += '<span class="ansi-inverse">'; open.push(1); }
+          else if (c === 9) { out += '<span class="ansi-strike">'; open.push(1); }
+        }
+      }
+      last = re.lastIndex;
+    }
+    out += escapeHtml(line.slice(last));
+    while (open.length) { out += '</span>'; open.pop(); }
+    return out;
+  }
+
+  // 解析代码块 fence 元信息（Expressive Code 风格）
   function parseFenceMeta(s) {
     const meta = (s || '').trim();
-    const empty = { title: '', markers: '', marks: new Set(), wrap: false, lineNumbers: false, start: 1, hint: '' };
+    const empty = { title: '', frame: 'none', wrap: false, preserveIndent: false,
+      lineNumbers: false, start: 1, lineMarks: [], inlineMarks: [], collapse: [], diff: false, hint: '' };
     if (!meta) return empty;
-    const tM = meta.match(/title=["']([^"']*)["']/i);
+
+    let work = meta;
+
+    // title="…"
+    const tM = work.match(/\btitle\s*=\s*["']([^"']*)["']/i);
     const title = tM ? tM[1] : '';
-    const mkr = meta.match(/\{([^{}]*)\}/);
-    const markers = mkr ? mkr[1].trim() : '';
-    const marks = parseLineMarks(markers);
-    const wrap = /\bwrap\b/i.test(meta);
-    const sM = meta.match(/\b(?:startLineNumber|start)=(\d+)/i);
-    const start = sM ? Math.max(1, +sM[1]) : 1;
-    const wantLn = /\b(?:showLineNumbers|lineNumbers|numbers)\b/i.test(meta);
-    const noLn = /\b(?:noLineNumbers|hideLineNumbers)\b/i.test(meta);
-    // 自动换行时行号无法与折行对齐，故与行号互斥
-    const lineNumbers = !noLn && !wrap && (wantLn || marks.size > 0);
-    const parts = [];
-    if (markers && !lineNumbers) parts.push('行标记 {' + markers + '}');
-    if (wrap) parts.push('自动换行');
-    return { title, markers, marks, wrap, lineNumbers, start, hint: parts.join(' · ') };
-  }
-  // 统一渲染代码块（含行号栏与标记行）
-  function codeBlockHtml(code, lang, fm) {
-    const rows = code.split('\n');
-    const cls = [];
-    if (fm.wrap) cls.push('code-wrap');
-    if (fm.lineNumbers) cls.push('has-ln');
-    const headLang = escapeHtml(lang || 'text') + (fm.title ? ' · ' + escapeHtml(fm.title) : '');
-    const head = `<div class="code-head"><span>${headLang}</span><span>${rows.length} 行</span></div>`;
-    const codeEl = `<code class="lang-${escapeAttr(lang)}">${HL(code, lang)}</code>`;
-    let body = codeEl;
-    if (fm.lineNumbers) {
-      const nums = rows.map((_, idx) => {
-        const no = fm.start + idx;
-        return `<span class="ln${fm.marks.has(no) ? ' ln-mark' : ''}">${no}</span>`;
-      }).join('');
-      body = `<div class="code-body"><span class="line-nums" aria-hidden="true">${nums}</span>${codeEl}</div>`;
+    if (tM) work = work.replace(tM[0], ' ');
+
+    // frame="editor|terminal|none|code"
+    const fM = work.match(/\bframe\s*=\s*["']?(editor|terminal|none|code)["']?/i);
+    const frame = fM ? fM[1].toLowerCase() : (title ? 'editor' : 'none');
+    if (fM) work = work.replace(fM[0], ' ');
+
+    // collapse={1-5, 12-14}
+    const collapse = [];
+    const cRe = /\bcollapse\s*=\s*\{([^{}]*)\}/gi;
+    let cM;
+    while ((cM = cRe.exec(work))) {
+      cM[1].split(',').forEach(p => {
+        p = p.trim(); if (!p) return;
+        const r = /^(\d+)(?:\s*-\s*(\d+))?$/.exec(p);
+        if (r) { let a = +r[1], b = r[2] ? +r[2] : +r[1]; if (a > b) { const t = a; a = b; b = t; } if (b > a) collapse.push({ from: a, to: b }); }
+      });
+      work = work.replace(cM[0], ' ');
     }
-    const foot = fm.hint ? `<div class="code-meta">${escapeHtml(fm.hint)}</div>` : '';
-    return `<pre${cls.length ? ` class="${cls.join(' ')}"` : ''}>${head}${body}${foot}</pre>`;
+
+    // wrap / preserveIndent
+    const wrap = /\bwrap\b/i.test(work);
+    const preserveIndent = /\bpreserveIndent\b/i.test(work);
+
+    // 行号 / 起始行
+    const wantLn = /\b(?:showLineNumbers|lineNumbers|numbers)\b/i.test(work);
+    const noLn = /\b(?:noLineNumbers|hideLineNumbers)\b/i.test(work);
+    const sM = work.match(/\b(?:startLineNumber|start)\s*=\s*(\d+)/i);
+    const start = sM ? Math.max(1, +sM[1]) : 1;
+    const diffTok = /\bdiff\b/i.test(work);
+
+    // 清除已识别的单词/数值 token，剩余仅作标记扫描
+    work = work.replace(/\b(?:wrap|preserveIndent|showLineNumbers|lineNumbers|numbers|noLineNumbers|hideLineNumbers|diff)\b/gi, ' ');
+    work = work.replace(/\b(?:startLineNumber|start)\s*=\s*\d+/gi, ' ');
+    work = work.replace(/\btitle\s*=\s*["']?[^"'\s}]*["']?/gi, ' ');
+    work = work.replace(/\bframe\s*=\s*["']?(?:editor|terminal|none|code)["']?/gi, ' ');
+
+    // 标记扫描：{行} [mark|ins|del|diff|=label|/regex/]  或独立 "文本" / /正则/
+    const lineMarks = [];
+    const inlineMarks = [];
+    let diff = diffTok;
+    const mRe = /\{([^{}]*)\}(?:\s*(mark="[^"]*"|ins="[^"]*"|del="[^"]*"|mark='[^']*'|ins='[^']*'|del='[^']*'|mark|ins|del|diff|\/[^/]+\/))?|\/([^/]+)\/|"([^"]+)"|'([^']+)'/gi;
+    let mm;
+    while ((mm = mRe.exec(work))) {
+      if (mm[1] !== undefined) {
+        const spec = mm[1].trim();
+        const suffix = (mm[2] || '').trim();
+        let type = 'mark', label = null, regex = null;
+        if (suffix) {
+          let m;
+          if ((m = suffix.match(/^(mark|ins|del|diff)$/i))) { type = m[1].toLowerCase(); if (type === 'diff') { diff = true; type = 'mark'; } }
+          else if ((m = suffix.match(/^(mark|ins|del)="([^"]*)"$/i) || suffix.match(/^(mark|ins|del)='([^']*)'$/i))) { type = m[1].toLowerCase(); label = m[2]; }
+          else if ((m = suffix.match(/^\/(.+)\/$/))) { type = 'mark'; regex = m[1]; }
+        }
+        const lines = parseLineMarks(spec);
+        if (lines.size) lineMarks.push({ lines: lines, type: type, label: label, regex: regex });
+      } else if (mm[3] !== undefined) inlineMarks.push({ pattern: mm[3], regex: true });
+      else if (mm[4] !== undefined) inlineMarks.push({ pattern: mm[4], regex: false });
+      else if (mm[5] !== undefined) inlineMarks.push({ pattern: mm[5], regex: false });
+    }
+
+    const lineNumbers = !noLn && (wantLn || lineMarks.length > 0 || collapse.length > 0);
+    const parts = [];
+    if (frame && frame !== 'none') parts.push('窗口：' + frame);
+    if (title) parts.push('标题：' + title);
+    if (lineMarks.length) parts.push(lineMarks.length + ' 处行标记');
+    if (inlineMarks.length) parts.push(inlineMarks.length + ' 处文本标记');
+    if (collapse.length) parts.push(collapse.length + ' 处折叠');
+    if (wrap) parts.push('自动换行');
+    return { title: title, frame: frame, wrap: wrap, preserveIndent: preserveIndent,
+      lineNumbers: lineNumbers, start: start, lineMarks: lineMarks, inlineMarks: inlineMarks, collapse: collapse, diff: diff, hint: parts.join(' · ') };
+  }
+
+  // 单行：高亮 + 行标记 + 文本标记
+  function lineEl(row, fm, no, showNum, isAnsi, lang, cid) {
+    let h = isAnsi ? renderAnsiLine(row) : HL(row, lang);
+    let typeCls = '', label = null, lineRegex = null;
+    for (const lm of fm.lineMarks) {
+      if (lm.lines.has(no)) {
+        typeCls = lm.type === 'ins' ? 'ln-ins' : lm.type === 'del' ? 'ln-del' : 'ln-mark';
+        if (lm.label) label = lm.label;
+        if (lm.regex) lineRegex = lm.regex;
+      }
+    }
+    if (fm.diff && !typeCls) {
+      if (/^\s*\+/.test(row)) typeCls = 'ln-ins';
+      else if (/^\s*-/.test(row)) typeCls = 'ln-del';
+    }
+    const patterns = [];
+    if (lineRegex) patterns.push({ pattern: lineRegex, regex: true });
+    fm.inlineMarks.forEach(p => patterns.push(p));
+    if (patterns.length) h = applyTextMarks(h, patterns);
+
+    const gutter = showNum ? '<span class="ln-gutter">' + no + '</span>' : '';
+    const toggle = cid ? '<button class="clp-btn" type="button" data-clp="' + escapeAttr(cid) + '" aria-label="折叠/展开">▸</button>' : '';
+    const tag = label ? '<span class="ln-label">' + escapeHtml(label) + '</span>' : '';
+    return '<span class="code-line' + (typeCls ? ' ' + typeCls : '') + '">' + toggle + gutter + '<span class="ln-code">' + h + '</span>' + tag + '</span>';
+  }
+
+  // 逐行拼装（含折叠分组）
+  function buildLines(rows, fm, lang, isAnsi, bid) {
+    const showNum = fm.lineNumbers;
+    const colByFrom = {};
+    fm.collapse.forEach(c => { colByFrom[c.from] = c; });
+    let html = '', i = 0; const n = rows.length;
+    while (i < n) {
+      const no = fm.start + i;
+      const col = colByFrom[no];
+      if (col && col.to > no) {
+        const idxTo = col.to - fm.start;
+        const cid = bid + '-clp-' + no;
+        html += '<span class="clp">';
+        html += lineEl(rows[i], fm, no, showNum, isAnsi, lang, cid);
+        html += '<span class="clp-region">';
+        for (let j = i + 1; j <= idxTo && j < n; j++) {
+          const jno = fm.start + j;
+          html += lineEl(rows[j], fm, jno, showNum, isAnsi, lang, null);
+        }
+        html += '</span></span>';
+        i = idxTo + 1;
+        continue;
+      }
+      html += lineEl(rows[i], fm, no, showNum, isAnsi, lang, null);
+      i++;
+    }
+    return html;
+  }
+
+  // 统一渲染代码块（逐行 + 窗口框 + 标记 + 折叠）
+  function codeBlockHtml(code, lang, fm) {
+    const isAnsi = /^(ansi|ansi-terminal|terminal|console)$/i.test(lang || '');
+    if (/^diff/i.test(lang || '')) fm.diff = true;
+    const rows = code.replace(/\n+$/, '').split('\n');
+    const bid = 'cb' + (++_cbUid);
+    const cls = ['code-block'];
+    if (fm.wrap) cls.push('code-wrap');
+    if (fm.frame && fm.frame !== 'none') cls.push('frame-' + fm.frame);
+    if (fm.diff) cls.push('has-diff');
+
+    let bar = '';
+    if (fm.frame === 'editor' || fm.frame === 'terminal') {
+      const controls = fm.frame === 'editor'
+        ? '<span class="fr-dot fr-r"></span><span class="fr-dot fr-y"></span><span class="fr-dot fr-g"></span>'
+        : '<span class="fr-prompt">❯</span>';
+      const title = escapeHtml(fm.title || (lang ? lang : '终端'));
+      bar = '<div class="code-frame-bar"><span class="fr-controls">' + controls + '</span><span class="fr-title">' + title + '</span></div>';
+    }
+
+    const headLang = escapeHtml(lang || 'text') + (fm.title && fm.frame === 'none' ? ' · ' + escapeHtml(fm.title) : '');
+    const head = '<div class="code-head"><span>' + headLang + '</span><span>' + rows.length + ' 行</span></div>';
+    const codeEl = '<code class="lang-' + escapeAttr((lang || 'text').toLowerCase()) + '">' + buildLines(rows, fm, lang, isAnsi, bid) + '</code>';
+    const foot = fm.hint ? '<div class="code-meta">' + escapeHtml(fm.hint) + '</div>' : '';
+    return '<pre' + (cls.length ? ' class="' + cls.join(' ') + '"' : '') + '>' + bar + head + codeEl + foot + '</pre>';
   }
   function splitRow(row) {
     let s = row.trim().replace(/^\|/, '').replace(/\|$/, '');
@@ -1373,6 +1552,14 @@ const CMD = {
   wikilink: () => openModal('#modalWikilink', () => { $('#wkSlug').value = ''; $('#wkAlias').value = Editor.sel().t || ''; $('#wkSlug').focus(); }),
   wikicard: () => openModal('#modalWikicard', () => { $('#wcSlug').value = ''; $('#wcTitle').value = Editor.sel().t || ''; $('#wcSlug').focus(); }),
   codeln: () => openModal('#modalCodeln', () => { $('#clLang').value = 'js'; $('#clStart').value = ''; $('#clNumbers').checked = true; $('#clWrap').checked = false; $('#clMarks').value = ''; $('#clCode').value = Editor.sel().t || ''; $('#clLang').focus(); }),
+  codemark: () => Editor.insert('\n```js {2,4-5} mark="重点"\nfunction greet(name) {\n  return `Hello, ${name}!`;\n}\nconsole.log(greet(\'Firefly\'));\n```\n\n'),
+  codeframe: () => Editor.insert('\n```js title="src/utils.js" frame="editor"\nexport function sum(a, b) {\n  return a + b;\n}\n```\n\n'),
+  codecollapse: () => Editor.insert('\n```js collapse={1-4}\nimport { createApp } from \'vue\';\nimport App from \'./App.vue\';\nimport router from \'./router\';\nimport \'./styles.css\';\n\ncreateApp(App).use(router).mount(\'#app\');\nconsole.log(\'started\');\n```\n\n'),
+  codeansi: () => {
+    const e = '\u001b';
+    const code = e + '[32m✔' + e + '[0m 构建成功\n' + e + '[33m⚠' + e + '[0m 2 个警告\n' + e + '[31m✖' + e + '[0m 1 个错误';
+    Editor.insert('\n```ansi\n' + code + '\n```\n\n');
+  },
   plantuml: () => openModal('#modalPlantuml', () => { $('#puText').value = '@startuml\nAlice -> Bob: 认证请求\nBob --> Alice: 响应\n@enduml'; $('#puText').focus(); }),
   grid: () => openModal('#modalGrid', () => { $('#gdUrls').value = ''; $('#gdUrls').focus(); }),
   codegroup: () => openModal('#modalCodegroup', () => { $('#cgTabs').innerHTML = ''; cgAddRow('js', 'JavaScript', 'console.log("Hi");'); $('#cgAdd').focus(); }),
@@ -1550,6 +1737,10 @@ const SLASH = [
   { k: 'wikilink', icon: 'i-wikilink', name: '内部链接', desc: '[[slug|别名]]' },
   { k: 'wikicard', icon: 'i-wikilink', name: '文章卡片', desc: '[[slug]] 卡片式内链（独占一段）' },
   { k: 'codeln', icon: 'i-code', name: '代码块（行号）', desc: '```js showLineNumbers {2}' },
+  { k: 'codemark', icon: 'i-code', name: '代码块（行标记）', desc: '```js {2,4} mark="重点"' },
+  { k: 'codeframe', icon: 'i-code', name: '代码块（窗口框）', desc: '```js frame="editor" title="…"' },
+  { k: 'codecollapse', icon: 'i-code', name: '代码块（折叠）', desc: '```js collapse={1-4}' },
+  { k: 'codeansi', icon: 'i-terminal', name: '终端输出（ANSI）', desc: '```ansi 彩色日志' },
   { k: 'plantuml', icon: 'i-plantuml', name: 'PlantUML 图表', desc: '```plantuml' },
   { k: 'grid', icon: 'i-grid', name: '图片画廊', desc: '[grid] … [/grid]（最多并排 4 张）' },
   { k: 'codegroup', icon: 'i-codegroup', name: '代码组', desc: '::: code-group' },
@@ -1709,9 +1900,19 @@ ed.addEventListener('blur', () => setTimeout(closeSlash, 120));
 ed.addEventListener('click', () => { closeSlash(); updateCaretInfo(); });
 ed.addEventListener('keyup', updateCaretInfo);
 ed.addEventListener('scroll', () => {
-  $('#gutter').scrollTop = ed.scrollTop;
+  syncGutterScroll();
   syncPreviewScroll();
 });
+
+// 行号栏与正文按可滚动范围等比例同步：正文长行会被换行（pre-wrap），
+// 其 scrollHeight 会远大于行号栏（每个逻辑行固定 1 行高），若 1:1 拷贝
+// scrollTop，行号栏会提前触顶并“卡死”在最后一行号，正文却仍能继续下滑。
+function syncGutterScroll() {
+  const g = $('#gutter');
+  const maxE = ed.scrollHeight - ed.clientHeight;
+  const maxG = g.scrollHeight - g.clientHeight;
+  g.scrollTop = (maxE > 0 && maxG > 0) ? (ed.scrollTop / maxE) * maxG : ed.scrollTop;
+}
 
 function updateGutter() {
   const g = $('#gutter');
@@ -1721,7 +1922,7 @@ function updateGutter() {
     for (let i = 1; i <= n; i++) html += '<i>' + i + '</i>';
     g.innerHTML = html;
   }
-  g.scrollTop = ed.scrollTop;
+  syncGutterScroll();
   updateCaretInfo();
 }
 function updateCaretInfo() {
@@ -1829,6 +2030,8 @@ $('#outlineList').addEventListener('click', e => {
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
 $('#previewRender').addEventListener('click', e => {
+  const clp = e.target.closest('.clp-btn');
+  if (clp) { const w = clp.closest('.clp'); if (w) w.classList.toggle('collapsed'); return; }
   const sp = e.target.closest('.spoiler');
   if (sp) { sp.classList.toggle('show'); return; }
   const a = e.target.closest('a[href^="#"]');
@@ -2902,7 +3105,15 @@ const GH = (function () {
 /* ---------- GitHub 同步 UI ---------- */
 function openGhSync() {
   const c = GH.cfg();
-  $('#ghsOwner').value = c.owner; $('#ghsRepo').value = c.repo; $('#ghsBranch').value = c.branch;
+  const patUser = GH.getUser();
+  // 账户名：服务器模式/PAT 登录后自动填入；仓库名：默认预填 Firefly
+  const defaultOwner = c.owner || GH.serverLogin() || (patUser && patUser.login) || '';
+  const defaultRepo = c.repo || 'Firefly';
+  if (!c.owner && defaultOwner) GH.saveCfg({ owner: defaultOwner });
+  if (!c.repo) GH.saveCfg({ repo: defaultRepo });
+  $('#ghsOwner').value = defaultOwner;
+  $('#ghsRepo').value = defaultRepo;
+  $('#ghsBranch').value = c.branch;
   $('#ghsPath').value = c.path;
   $('#ghsPat').value = GH.getToken() || '';
   $('#ghsBackend').value = GH.backendUrl() || '';

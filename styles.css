@@ -543,6 +543,84 @@ select { appearance: none; cursor: pointer; padding-right: 28px;
 }
 .markdown-body pre .code-body > code { flex: 1 1 auto; min-width: 0; position: relative; z-index: 1; }
 .markdown-body pre.code-wrap code { white-space: pre-wrap; word-break: break-word; overflow-x: visible; }
+
+/* 增强代码块（Expressive Code 风格）：窗口框 / 逐行标记 / 折叠 / ANSI */
+.markdown-body pre.code-block { position: relative; }
+.markdown-body pre .code-frame-bar {
+  display: flex; align-items: center; gap: 10px; padding: 7px 12px;
+  font-family: var(--mono); font-size: 12px; color: var(--text-dim);
+  background: var(--bg-soft); border-bottom: 1px solid var(--border);
+}
+.markdown-body pre .fr-controls { display: inline-flex; gap: 6px; align-items: center; }
+.markdown-body pre .fr-dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+.markdown-body pre .fr-r { background: #ff5f57; }
+.markdown-body pre .fr-y { background: #febc2e; }
+.markdown-body pre .fr-g { background: #28c840; }
+.markdown-body pre .fr-prompt { color: var(--accent); font-weight: 700; }
+.markdown-body pre .fr-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 逐行结构 */
+.markdown-body pre.code-block > code { padding: 10px 0; }
+.markdown-body pre .code-line {
+  display: flex; align-items: stretch; position: relative;
+  padding: 0 16px; min-height: 1.7em; line-height: 1.7; font-size: 13px;
+}
+.markdown-body pre .code-line .ln-gutter {
+  flex: 0 0 auto; width: 2.4em; margin-right: 14px; padding-right: 12px;
+  text-align: right; color: var(--text-mute); user-select: none; -webkit-user-select: none;
+  border-right: 1px solid var(--border);
+}
+.markdown-body pre .code-line .ln-code { flex: 1 1 auto; min-width: 0; white-space: pre; }
+.markdown-body pre.code-wrap .code-line .ln-code { white-space: pre-wrap; word-break: break-word; }
+.markdown-body pre.code-wrap .code-line { white-space: pre-wrap; }
+/* 行标记（mark / ins / del） */
+.markdown-body pre .code-line.ln-mark { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.markdown-body pre .code-line.ln-ins  { background: color-mix(in srgb, #16a34a 14%, transparent); }
+.markdown-body pre .code-line.ln-del  { background: color-mix(in srgb, var(--rose) 14%, transparent); }
+.markdown-body pre .code-line.ln-del .ln-code { text-decoration: line-through; opacity: .82; }
+.markdown-body pre .code-line .ln-label {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  font-size: 10.5px; padding: 1px 7px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent); border: 1px solid var(--border);
+  pointer-events: none; white-space: nowrap;
+}
+/* 折叠 */
+.markdown-body pre .clp, .markdown-body pre .clp-region { display: block; }
+.markdown-body pre .clp-btn {
+  position: absolute; left: 2px; top: 0; bottom: 0; width: 14px; z-index: 2;
+  display: flex; align-items: center; justify-content: center;
+  background: none; border: none; cursor: pointer; color: var(--text-mute);
+  font-size: 10px; padding: 0; transition: transform .15s;
+}
+.markdown-body pre .clp-btn:hover { color: var(--accent); }
+.markdown-body pre .clp:not(.collapsed) > .code-line .clp-btn { transform: rotate(90deg); }
+.markdown-body pre .clp.collapsed .clp-region { display: none; }
+/* 文本 / 正则标记 */
+.markdown-body pre mark.mk-text {
+  background: rgba(255, 212, 0, .38); color: inherit; border-radius: 3px; padding: 0 1px;
+}
+/* ANSI 终端配色 */
+.markdown-body pre code .ansi-bold { font-weight: 700; }
+.markdown-body pre code .ansi-dim { opacity: .6; }
+.markdown-body pre code .ansi-italic { font-style: italic; }
+.markdown-body pre code .ansi-underline { text-decoration: underline; }
+.markdown-body pre code .ansi-strike { text-decoration: line-through; }
+.markdown-body pre code .ansi-inverse { background: var(--text); color: var(--bg-elev); }
+.markdown-body pre code .ansi-black { color: #555; }
+.markdown-body pre code .ansi-red { color: #e05260; }
+.markdown-body pre code .ansi-green { color: #2fa84f; }
+.markdown-body pre code .ansi-yellow { color: #c79a1e; }
+.markdown-body pre code .ansi-blue { color: #3b82f6; }
+.markdown-body pre code .ansi-magenta { color: #c056c8; }
+.markdown-body pre code .ansi-cyan { color: #0e9bb0; }
+.markdown-body pre code .ansi-white { color: #cfd4dd; }
+.markdown-body pre code .ansi-br-black { color: #7a8190; }
+.markdown-body pre code .ansi-br-red { color: #ff6b78; }
+.markdown-body pre code .ansi-br-green { color: #4ade80; }
+.markdown-body pre code .ansi-br-yellow { color: #facc4a; }
+.markdown-body pre code .ansi-br-blue { color: #6aa8ff; }
+.markdown-body pre code .ansi-br-magenta { color: #e08bef; }
+.markdown-body pre code .ansi-br-cyan { color: #4fd6e8; }
+.markdown-body pre code .ansi-br-white { color: #f2f4f8; }
 .markdown-body table { width: 100%; border-collapse: collapse; margin: 1.2em 0; font-size: .95em; display: block; overflow-x: auto; }
 .markdown-body th, .markdown-body td { border: 1px solid var(--border); padding: 8px 12px; }
 .markdown-body th { background: var(--bg-soft); font-weight: 700; }
