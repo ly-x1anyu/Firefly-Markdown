@@ -105,7 +105,7 @@ const HL = (function () {
     javascript: 'js', jsx: 'js', ts: 'js', typescript: 'js', tsx: 'js', mjs: 'js', cjs: 'js', vue: 'html', svelte: 'html',
     python: 'py', py3: 'py', golang: 'go', rust: 'c', rs: 'c', java: 'c', kotlin: 'c', kt: 'c', swift: 'c', dart: 'c',
     cpp: 'c', 'c++': 'c', csharp: 'c', cs: 'c', php: 'c', scss: 'css', less: 'css', sass: 'css',
-    xml: 'html', svg: 'html', vbs: 'def', bash: 'sh', shell: 'sh', zsh: 'sh', console: 'sh', powershell: 'sh', ps1: 'sh',
+    xml: 'html', svg: 'html', vbs: 'def', bash: 'sh', shell: 'sh', zsh: 'sh', console: 'sh', powershell: 'sh', pwsh: 'sh', ps1: 'sh', ps: 'sh', cmd: 'sh', bat: 'sh', dos: 'sh',
     yml: 'yaml', ini: 'yaml', toml: 'yaml', conf: 'yaml', dockerfile: 'sh', makefile: 'sh'
   };
 
@@ -490,13 +490,19 @@ const MD = (function () {
           buf.push(lines[i]); i++;
         }
         const code = buf.join('\n');
-        const fm = parseFenceMeta(meta);
+        const fm = parseFenceMeta(meta, lang);
+        // 文件名注释：首行整行注释且像文件名/路径 → 提取为标题并隐藏该行
+        let renderCode = code;
+        if (!fm.title) {
+          const ex = extractTitleComment(code, lang);
+          if (ex) { fm.title = ex.title; renderCode = ex.code; }
+        }
         if (lang === 'mermaid') {
-          out += `<div class="mermaid-block"><div class="mermaid-head"><svg class="ico ico-sm"><use href="#i-mermaid"/></svg> Mermaid 图表</div><pre class="mermaid-code">${escapeHtml(code)}</pre><div class="mermaid-hint">构建时由 Firefly 渲染为静态 SVG</div></div>`;
+          out += `<div class="mermaid-block"><div class="mermaid-head"><svg class="ico ico-sm"><use href="#i-mermaid"/></svg> Mermaid 图表</div><pre class="mermaid-code">${escapeHtml(renderCode)}</pre><div class="mermaid-hint">构建时由 Firefly 渲染为静态 SVG</div></div>`;
         } else if (lang === 'plantuml') {
-          out += `<div class="plantuml-block"><div class="mermaid-head"><svg class="ico ico-sm"><use href="#i-mermaid"/></svg> PlantUML 图表</div><pre class="plantuml-code">${escapeHtml(code)}</pre><div class="mermaid-hint">构建时由 Firefly 渲染为静态 SVG</div></div>`;
+          out += `<div class="plantuml-block"><div class="mermaid-head"><svg class="ico ico-sm"><use href="#i-mermaid"/></svg> PlantUML 图表</div><pre class="plantuml-code">${escapeHtml(renderCode)}</pre><div class="mermaid-hint">构建时由 Firefly 渲染为静态 SVG</div></div>`;
         } else {
-          out += codeBlockHtml(code, lang, fm);
+          out += codeBlockHtml(renderCode, lang, fm);
         }
         continue;
       }
@@ -583,7 +589,7 @@ const MD = (function () {
         continue;
       }
 
-      // 代码组 ::: code-group labels=[...]
+      // 代码组 ::: code-group labels=[...]（组内可放代码块，也可放任意 Markdown 内容）
       let mCG = /^ {0,3}:::\s*code-group\s*(?:labels=\[([^\]]*)\])?\s*$/i.exec(line);
       if (mCG) {
         const labels = (mCG[1] || '').split(',').map(s => s.trim().replace(/^["']|["']$/g, '').trim()).filter(Boolean);
@@ -598,8 +604,12 @@ const MD = (function () {
               if (new RegExp('^ {0,3}' + (fence === '`' ? '`' : '~') + '{' + len + ',}\\s*$').test(lines[i])) { i++; break; }
               cbuf.push(lines[i]); i++;
             }
-            blocks.push({ lang, code: cbuf.join('\n'), meta });
-          } else { i++; }
+            blocks.push({ type: 'code', lang, code: cbuf.join('\n'), meta });
+          } else {
+            const cbuf = [];
+            while (i < lines.length && !RE.fence.test(lines[i]) && !/^ {0,3}:::\s*$/.test(lines[i])) { cbuf.push(lines[i]); i++; }
+            if (cbuf.join('').trim()) blocks.push({ type: 'html', html: parseBlocks(cbuf, ctx) });
+          }
         }
         if (i < lines.length) i++;
         if (blocks.length) out += renderCodeGroup(blocks, labels, ctx);
@@ -806,25 +816,78 @@ const MD = (function () {
     return set;
   }
 
-  // 在已高亮的 HTML 片段内安全注入文本/正则标记（不破坏已有标签）
+  // 在已高亮的 HTML 片段内安全注入文本/正则标记（不破坏已有标签）。
+  // 关键：标记可能跨越多个高亮 token（如 "return true;" 被拆成两段 span），
+  // 因此先构建“纯文本 -> HTML 偏移”映射，再在原文对应区间包裹 <mark>，
+  // 与 Expressive Code 基于原始文本匹配的行为一致。
   function applyTextMarks(html, patterns) {
     if (!patterns || !patterns.length) return html;
-    return html.replace(/<[^>]+>|[^<]+/g, seg => {
-      if (seg.charAt(0) === '<') return seg;            // 标签原样保留
-      let s = seg;
-      for (const p of patterns) {
-        if (!p.pattern) continue;
-        if (p.regex) {
-          try { s = s.replace(new RegExp(p.pattern, 'g'), m => `<mark class="mk-text">${m}</mark>`); } catch (e) {}
-        } else {
-          const tag = escapeHtml(p.pattern);
-          s = s.split(p.pattern).join(`<mark class="mk-text">${tag}</mark>`);
+    // 1) 纯文本 + 映射：map[i] = 纯文本第 i 个字符在 html 中的起始位置
+    const map = [];
+    let i = 0;
+    while (i < html.length) {
+      if (html[i] === '<') {
+        const end = html.indexOf('>', i);
+        i = end === -1 ? html.length : end + 1;
+      } else {
+        map.push(i);
+        i++;
+      }
+    }
+    const text = map.map(k => html[k]).join('');
+    // 2) 收集所有匹配区间 [s,e)
+    const marks = [];
+    for (const p of patterns) {
+      if (!p.pattern) continue;
+      const cls = p.cls || 'mk-text';
+      if (p.regex) {
+        try {
+          const re = new RegExp(p.pattern, 'g');
+          let m;
+          while ((m = re.exec(text))) {
+            marks.push({ s: m.index, e: m.index + m[0].length, cls });
+            if (m[0].length === 0) re.lastIndex++;
+          }
+        } catch (e) {}
+      } else {
+        const tag = p.pattern;
+        let from = 0, idx;
+        while ((idx = text.indexOf(tag, from)) !== -1) {
+          marks.push({ s: idx, e: idx + tag.length, cls });
+          from = idx + tag.length;
         }
       }
-      return s;
-    });
+    }
+    if (!marks.length) return html;
+    // 3) 按映射区间在 html 中包裹 <mark>（从后往前插入，避免索引偏移）
+    const inserts = [];
+    for (const mk of marks) {
+      if (mk.s < 0 || mk.e > map.length) continue;
+      const sHtml = map[mk.s];
+      const eHtml = map[mk.e - 1] + 1;
+      inserts.push({ pos: sHtml, tag: '<mark class="' + mk.cls + '">' });
+      inserts.push({ pos: eHtml, tag: '</mark>' });
+    }
+    inserts.sort((a, b) => b.pos - a.pos);
+    let result = html;
+    for (const ins of inserts) result = result.slice(0, ins.pos) + ins.tag + result.slice(ins.pos);
+    return result;
   }
 
+  // ANSI 256 色索引 → CSS 颜色
+  function ansi256ToRgb(n) {
+    if (n < 16) {
+      const p = ['#000000','#800000','#008000','#808000','#000080','444444','008080','#c0c0c0','#808080','#ff0000','#00ff00','#ffff00','#0000ff','#ff00ff','#00ffff','#ffffff'];
+      return p[n] || '#c0c0c0';
+    }
+    if (n < 232) {
+      const i = n - 16, r = Math.floor(i / 36), g = Math.floor((i % 36) / 6), b = i % 6;
+      const v = x => (x === 0 ? 0 : x * 40 + 55);
+      return `rgb(${v(r)},${v(g)},${v(b)})`;
+    }
+    const g = 8 + (n - 232) * 10;
+    return `rgb(${g},${g},${g})`;
+  }
   // 渲染单行 ANSI 转义序列（ansi 代码块）
   function renderAnsiLine(line) {
     const fgc = {30:'ansi-black',31:'ansi-red',32:'ansi-green',33:'ansi-yellow',34:'ansi-blue',35:'ansi-magenta',36:'ansi-cyan',37:'ansi-white',
@@ -839,7 +902,19 @@ const MD = (function () {
       if (codes.indexOf(0) >= 0 || codes.indexOf(39) >= 0 || codes.indexOf(49) >= 0) {
         while (open.length) { out += '</span>'; open.pop(); }
       } else {
-        for (const c of codes) {
+        for (let k = 0; k < codes.length; k++) {
+          const c = codes[k];
+          if (c === 38 || c === 48) {                       // 扩展色：38/48 5 n 或 38/48 2 r g b
+            const mode = codes[k + 1];
+            if (mode === 5) {
+              const rgb = ansi256ToRgb(codes[k + 2] || 0);
+              out += '<span style="' + (c === 38 ? 'color:' : 'background:') + rgb + '">'; open.push(1); k += 2;
+            } else if (mode === 2) {
+              const r = codes[k + 2] || 0, g = codes[k + 3] || codes[k + 3] || 0, b = codes[k + 4] || 0;
+              out += '<span style="' + (c === 38 ? 'color:' : 'background:') + `rgb(${r},${g},${b})` + '">'; open.push(1); k += 4;
+            }
+            continue;
+          }
           if (fgc[c]) { out += '<span class="' + fgc[c] + '">'; open.push(1); }
           else if (bgc[c]) { out += '<span class="' + bgc[c] + '">'; open.push(1); }
           else if (c === 1) { out += '<span class="ansi-bold">'; open.push(1); }
@@ -858,10 +933,13 @@ const MD = (function () {
   }
 
   // 解析代码块 fence 元信息（Expressive Code 风格）
-  function parseFenceMeta(s) {
+  function parseFenceMeta(s, lang) {
     const meta = (s || '').trim();
-    const empty = { title: '', frame: 'none', wrap: false, preserveIndent: false,
-      lineNumbers: false, start: 1, lineMarks: [], inlineMarks: [], collapse: [], diff: false, hint: '' };
+    // 默认窗口框：shell/终端类语言（含 ansi）→ 终端框；其余 → 编辑器框（贴合 Firefly/Expressive Code）
+    const termLangs = /^(ba|z|k)?sh$|^shell$|^bash$|^zsh$|^powershell$|^pwsh$|^ps1?$|^cmd$|^batch$|^bat$|^dos$|^console$|^terminal$|^ansi$/i;
+    const emptyFrame = termLangs.test(lang || '') ? 'terminal' : 'editor';
+    const empty = { title: '', frame: emptyFrame, wrap: false, preserveIndent: false,
+      lineNumbers: false, start: 1, lineMarks: [], inlineMarks: [], collapse: [], diff: false, hint: '', langOverride: null };
     if (!meta) return empty;
 
     let work = meta;
@@ -871,46 +949,90 @@ const MD = (function () {
     const title = tM ? tM[1] : '';
     if (tM) work = work.replace(tM[0], ' ');
 
-    // frame="editor|terminal|none|code"
+    // lang="…"（用于 diff lang="js" 这类覆盖高亮语言）
+    const langM = work.match(/\blang\s*=\s*["']([^"']+)["']/i);
+    const langOverride = langM ? langM[1].trim() : null;
+    if (langM) work = work.replace(langM[0], ' ');
+
+    // frame="editor|terminal|none|code"；未显式指定时：shell 语言默认终端框，其余默认编辑器框（贴合 Firefly/Expressive Code）
     const fM = work.match(/\bframe\s*=\s*["']?(editor|terminal|none|code)["']?/i);
-    const frame = fM ? fM[1].toLowerCase() : (title ? 'editor' : 'none');
+    let frame;
+    if (fM) frame = fM[1].toLowerCase();
+    else frame = emptyFrame;
     if (fM) work = work.replace(fM[0], ' ');
 
     // collapse={1-5, 12-14}
     const collapse = [];
     const cRe = /\bcollapse\s*=\s*\{([^{}]*)\}/gi;
+    const cMatches = [];
     let cM;
-    while ((cM = cRe.exec(work))) {
+    while ((cM = cRe.exec(work))) cMatches.push(cM);
+    cMatches.forEach(cM => {
       cM[1].split(',').forEach(p => {
         p = p.trim(); if (!p) return;
         const r = /^(\d+)(?:\s*-\s*(\d+))?$/.exec(p);
         if (r) { let a = +r[1], b = r[2] ? +r[2] : +r[1]; if (a > b) { const t = a; a = b; b = t; } if (b > a) collapse.push({ from: a, to: b }); }
       });
       work = work.replace(cM[0], ' ');
-    }
+    });
 
-    // wrap / preserveIndent
-    const wrap = /\bwrap\b/i.test(work);
-    const preserveIndent = /\bpreserveIndent\b/i.test(work);
+    // wrap[=false] / preserveIndent[=false]
+    const wrapRaw = work.match(/\bwrap(?:\s*=\s*(false|true))?\b/i);
+    const wrap = !!wrapRaw && (!wrapRaw[1] || wrapRaw[1].toLowerCase() !== 'false');
+    const piRaw = work.match(/\bpreserveIndent(?:\s*=\s*(false|true))?\b/i);
+    const preserveIndent = !!piRaw && (!piRaw[1] || piRaw[1].toLowerCase() !== 'false');
 
-    // 行号 / 起始行
-    const wantLn = /\b(?:showLineNumbers|lineNumbers|numbers)\b/i.test(work);
+    // 行号 / 起始行（showLineNumbers 支持 =false）
+    const lnRaw = work.match(/\bshowLineNumbers(?:\s*=\s*(false|true))?\b/i);
+    const explicitLn = lnRaw ? (!lnRaw[1] || lnRaw[1].toLowerCase() !== 'false') : null;
+    const wantLn = explicitLn !== null ? explicitLn : /\b(?:lineNumbers|numbers)\b/i.test(work);
     const noLn = /\b(?:noLineNumbers|hideLineNumbers)\b/i.test(work);
     const sM = work.match(/\b(?:startLineNumber|start)\s*=\s*(\d+)/i);
     const start = sM ? Math.max(1, +sM[1]) : 1;
-    const diffTok = /\bdiff\b/i.test(work);
+    let diff = /\bdiff\b/i.test(work);
 
     // 清除已识别的单词/数值 token，剩余仅作标记扫描
     work = work.replace(/\b(?:wrap|preserveIndent|showLineNumbers|lineNumbers|numbers|noLineNumbers|hideLineNumbers|diff)\b/gi, ' ');
     work = work.replace(/\b(?:startLineNumber|start)\s*=\s*\d+/gi, ' ');
     work = work.replace(/\btitle\s*=\s*["']?[^"'\s}]*["']?/gi, ' ');
     work = work.replace(/\bframe\s*=\s*["']?(?:editor|terminal|none|code)["']?/gi, ' ');
+    work = work.replace(/\blang\s*=\s*["']?[^"'\s}]*["']?/gi, ' ');
 
-    // 标记扫描：{行} [mark|ins|del|diff|=label|/regex/]  或独立 "文本" / /正则/
-    const lineMarks = [];
+    // 带类型的行内文本标记（ins="x" del="x" mark="x"，独立于 {行}）
     const inlineMarks = [];
-    let diff = diffTok;
-    const mRe = /\{([^{}]*)\}(?:\s*(mark="[^"]*"|ins="[^"]*"|del="[^"]*"|mark='[^']*'|ins='[^']*'|del='[^']*'|mark|ins|del|diff|\/[^/]+\/))?|\/([^/]+)\/|"([^"]+)"|'([^']+)'/gi;
+    const inlineTypeRe = /\b(mark|ins|del)="([^"]+)"/gi;
+    const itMatches = [];
+    let itm;
+    while ((itm = inlineTypeRe.exec(work))) itMatches.push(itm);
+    itMatches.forEach(itm => {
+      inlineMarks.push({ pattern: itm[2], regex: false, type: itm[1].toLowerCase() });
+      work = work.replace(itm[0], ' ');
+    });
+
+    // 带标签的行标记 JSON 语法： del={"label":7-8} / {"label":5}
+    const lineMarks = [];
+    const jsonRePrefixed = /\b(mark|ins|del|diff)\s*=\s*\{\s*"([^"]+)"\s*:\s*(\d+(?:\s*-\s*\d+)?)\s*\}/gi;
+    const jpMatches = [];
+    let jm;
+    while ((jm = jsonRePrefixed.exec(work))) jpMatches.push(jm);
+    jpMatches.forEach(jm => {
+      let t = jm[1].toLowerCase();
+      if (t === 'diff') { diff = true; t = 'mark'; }
+      const lines = parseLineMarks(jm[3]);
+      if (lines.size) lineMarks.push({ lines: lines, type: t, label: jm[2], regex: null });
+      work = work.replace(jm[0], ' ');
+    });
+    const jsonRePlain = /\{\s*"([^"]+)"\s*:\s*(\d+(?:\s*-\s*\d+)?)\s*\}/gi;
+    const jplMatches = [];
+    while ((jm = jsonRePlain.exec(work))) jplMatches.push(jm);
+    jplMatches.forEach(jm => {
+      const lines = parseLineMarks(jm[2]);
+      if (lines.size) lineMarks.push({ lines: lines, type: 'mark', label: jm[1], regex: null });
+      work = work.replace(jm[0], ' ');
+    });
+
+    // 通用标记扫描：{行}[mark|ins|del|diff|=label|/regex/]  或独立 "文本" / /正则/
+    const mRe = /\{([^{}]*)\}(?:\s*(mark="[^"]*"|ins="[^"]*"|del="[^"]*"|mark='[^']*'|ins='[^']*'|del='[^']*'|mark|ins|del|diff|\/(?:[^/\\]|\\.)+\/))?|\/((?:[^/\\]|\\.)+)\/|"([^"]+)"|'([^']+)'/gi;
     let mm;
     while ((mm = mRe.exec(work))) {
       if (mm[1] !== undefined) {
@@ -925,21 +1047,59 @@ const MD = (function () {
         }
         const lines = parseLineMarks(spec);
         if (lines.size) lineMarks.push({ lines: lines, type: type, label: label, regex: regex });
-      } else if (mm[3] !== undefined) inlineMarks.push({ pattern: mm[3], regex: true });
-      else if (mm[4] !== undefined) inlineMarks.push({ pattern: mm[4], regex: false });
-      else if (mm[5] !== undefined) inlineMarks.push({ pattern: mm[5], regex: false });
+      } else if (mm[3] !== undefined) inlineMarks.push({ pattern: mm[3], regex: true, type: 'mark' });
+      else if (mm[4] !== undefined) inlineMarks.push({ pattern: mm[4], regex: false, type: 'mark' });
+      else if (mm[5] !== undefined) inlineMarks.push({ pattern: mm[5], regex: false, type: 'mark' });
     }
 
     const lineNumbers = !noLn && (wantLn || lineMarks.length > 0 || collapse.length > 0);
     const parts = [];
     if (frame && frame !== 'none') parts.push('窗口：' + frame);
     if (title) parts.push('标题：' + title);
+    if (langOverride) parts.push('语言：' + langOverride);
     if (lineMarks.length) parts.push(lineMarks.length + ' 处行标记');
     if (inlineMarks.length) parts.push(inlineMarks.length + ' 处文本标记');
     if (collapse.length) parts.push(collapse.length + ' 处折叠');
     if (wrap) parts.push('自动换行');
     return { title: title, frame: frame, wrap: wrap, preserveIndent: preserveIndent,
-      lineNumbers: lineNumbers, start: start, lineMarks: lineMarks, inlineMarks: inlineMarks, collapse: collapse, diff: diff, hint: parts.join(' · ') };
+      lineNumbers: lineNumbers, start: start, lineMarks: lineMarks, inlineMarks: inlineMarks,
+      collapse: collapse, diff: diff, hint: parts.join(' · '), langOverride: langOverride };
+  }
+
+  // 文件名注释：当首行是整行注释且内容像文件名/路径（含分隔符或扩展名）时，
+  // 将其提升为窗口标题并隐藏该行（贴合 Firefly/Expressive Code「文件名注释示例」）
+  function looksLikeFileRef(s) {
+    s = (s || '').trim();
+    if (!s) return false;
+    if (/[\\/]/.test(s)) return true;                   // 含路径分隔符（src/content/...）
+    if (/\.[a-z0-9]{1,6}$/i.test(s)) return true;        // 以扩展名结尾（x.js / file.html）
+    return false;
+  }
+  function extractTitleComment(code, lang) {
+    const lines = code.replace(/\n+$/, '').split('\n');
+    if (!lines.length) return null;
+    const first = lines[0].trim();
+    if (!first) return null;
+    const l = (lang || '').toLowerCase();
+    const rules = [
+      { re: /^<!--\s*([\s\S]*?)\s*-->$/,                                    langs: ['html','htm','xml','svg','vue','svelte','astro','markdown','md'] },
+      { re: /^\/\/\s*(.+)$/,                                                 langs: ['js','javascript','jsx','ts','typescript','tsx','java','c','cpp','cxx','h','hpp','cs','csharp','go','rs','rust','swift','kt','kotlin','dart','php','css','scss','less','jsonc','scala','groovy','perl','lua','r','d','zig','nim','julia','vue','svelte','astro'] },
+      { re: /^\/\*\s*([\s\S]*?)\s*\*\/$/,                                    langs: ['js','javascript','jsx','ts','typescript','tsx','java','c','cpp','cxx','h','hpp','cs','csharp','go','rs','rust','swift','kt','kotlin','dart','php','css','scss','less','jsonc','vue','svelte','astro'] },
+      { re: /^#\s*(?![\!])(.+)$/,                                            langs: ['sh','bash','zsh','ksh','shell','python','py','ruby','rb','yaml','yml','toml','r','perl','dockerfile','make','makefile','ini','env'] },
+      { re: /^--\s*(.+)$/,                                                   langs: ['sql'] },
+      { re: /^%\s*(.+)$/,                                                    langs: ['matlab','octave','erlang','tex','latex'] },
+      { re: /^;\s*(.+)$/,                                                    langs: ['lisp','clojure','scheme','ini'] },
+    ];
+    for (const r of rules) {
+      if (r.langs.indexOf(l) === -1) continue;
+      const m = r.re.exec(first);
+      if (m) {
+        const title = m[1].trim();
+        if (looksLikeFileRef(title)) return { title: title, code: lines.slice(1).join('\n') };
+        return null; // 命中注释语法但不是文件名 → 不提取（保留为普通注释行）
+      }
+    }
+    return null;
   }
 
   // 单行：高亮 + 行标记 + 文本标记
@@ -958,8 +1118,9 @@ const MD = (function () {
       else if (/^\s*-/.test(row)) typeCls = 'ln-del';
     }
     const patterns = [];
-    if (lineRegex) patterns.push({ pattern: lineRegex, regex: true });
-    fm.inlineMarks.forEach(p => patterns.push(p));
+    if (lineRegex) patterns.push({ pattern: lineRegex, regex: true, cls: 'mk-text' });
+    const clsMap = { mark: 'mk-text', ins: 'mk-ins', del: 'mk-del' };
+    fm.inlineMarks.forEach(p => patterns.push({ pattern: p.pattern, regex: p.regex, cls: clsMap[p.type] || 'mk-text' }));
     if (patterns.length) h = applyTextMarks(h, patterns);
 
     const gutter = showNum ? '<span class="ln-gutter">' + no + '</span>' : '';
@@ -1001,6 +1162,7 @@ const MD = (function () {
   function codeBlockHtml(code, lang, fm) {
     const isAnsi = /^(ansi|ansi-terminal|terminal|console)$/i.test(lang || '');
     if (/^diff/i.test(lang || '')) fm.diff = true;
+    const hlLang = fm.langOverride || lang;
     const rows = code.replace(/\n+$/, '').split('\n');
     const bid = 'cb' + (++_cbUid);
     const cls = ['code-block'];
@@ -1009,17 +1171,17 @@ const MD = (function () {
     if (fm.diff) cls.push('has-diff');
 
     let bar = '';
-    if (fm.frame === 'editor' || fm.frame === 'terminal') {
+    if (fm.frame === 'editor' || fm.frame === 'terminal' || fm.frame === 'code') {
       const controls = fm.frame === 'editor'
         ? '<span class="fr-dot fr-r"></span><span class="fr-dot fr-y"></span><span class="fr-dot fr-g"></span>'
-        : '<span class="fr-prompt">❯</span>';
-      const title = escapeHtml(fm.title || (lang ? lang : '终端'));
+        : (fm.frame === 'terminal' ? '<span class="fr-prompt">❯</span>' : '');
+      const title = escapeHtml(fm.title || (hlLang ? hlLang : (fm.frame === 'terminal' ? '终端' : '')));
       bar = '<div class="code-frame-bar"><span class="fr-controls">' + controls + '</span><span class="fr-title">' + title + '</span></div>';
     }
 
-    const headLang = escapeHtml(lang || 'text') + (fm.title && fm.frame === 'none' ? ' · ' + escapeHtml(fm.title) : '');
+    const headLang = escapeHtml(hlLang || 'text') + (fm.title && fm.frame === 'none' ? ' · ' + escapeHtml(fm.title) : '');
     const head = '<div class="code-head"><span>' + headLang + '</span><span>' + rows.length + ' 行</span></div>';
-    const codeEl = '<code class="lang-' + escapeAttr((lang || 'text').toLowerCase()) + '">' + buildLines(rows, fm, lang, isAnsi, bid) + '</code>';
+    const codeEl = '<code class="lang-' + escapeAttr((hlLang || 'text').toLowerCase()) + '">' + buildLines(rows, fm, hlLang, isAnsi, bid) + '</code>';
     const foot = fm.hint ? '<div class="code-meta">' + escapeHtml(fm.hint) + '</div>' : '';
     return '<pre' + (cls.length ? ' class="' + cls.join(' ') + '"' : '') + '>' + bar + head + codeEl + foot + '</pre>';
   }
@@ -1103,17 +1265,40 @@ const MD = (function () {
       </span></a>`;
   }
 
-  // 代码组：将多个代码块渲染为带标签页的切换容器（纯 CSS 切换，无需 JS）
+  // emoji 短代码 → 字符（零依赖内置常用表；未登记的短代码原样保留）
+  const EMOJI_MAP = { package:'📦', yarn:'🧶', npm:'📦', node:'🟢', bun:'🍞', pnpm:'📦', deno:'🦕',
+    warning:'⚠️', warn:'⚠️', info:'ℹ️', tip:'💡', bulb:'💡', rocket:'🚀', fire:'🔥', star:'⭐',
+    check:'✅', x:'❌', book:'📖', gear:'⚙️', settings:'⚙️', hammer:'🔨', wrench:'🔧', bug:'🐛',
+    sparkles:'✨', heart:'❤️', thumbsup:'👍', tada:'🎉', memo:'📝', lock:'🔒', key:'🔑',
+    link:'🔗', cloud:'☁️', globe:'🌐', code:'💻', terminal:'🖥️', folder:'📁', file:'📄',
+    note:'📝', success:'✅', danger:'⛔', failure:'❌', question:'❓', quote:'❝', abstract:'📄',
+    example:'📘', caution:'⚠️', important:'❗', congratulations:'🎊', eyes:'👀', zap:'⚡' };
+  function decodeEmojiShortcodes(s) {
+    if (!s) return s;
+    return s.replace(/:([a-z0-9_+-]+):/gi, (m, name) => EMOJI_MAP[name.toLowerCase()] || m);
+  }
+  // 代码组：将多个面板（代码块或任意 Markdown 内容）渲染为带标签页的切换容器（纯 CSS 切换，无需 JS）
   function renderCodeGroup(blocks, labels, ctx) {
     const gid = ctx.uid('cg');
-    const metas = blocks.map(b => parseFenceMeta(b.meta || ''));
-    const labelFor = (b, i) => escapeHtml(labels[i] || metas[i].title || b.lang || ('代码 ' + (i + 1)));
-    const radios = blocks.map((b, i) =>
+    const items = blocks.map((b, i) => {
+      if (b.type === 'html') {
+        const title = decodeEmojiShortcodes(labels[i]) || ('内容 ' + (i + 1));
+        return { title: title, html: `<div class="cg-panel">${b.html}</div>` };
+      }
+      const fm = parseFenceMeta(b.meta || '', b.lang || '');
+      let c = b.code;
+      if (!fm.title) {
+        const ex = extractTitleComment(b.code, b.lang || '');
+        if (ex) { fm.title = ex.title; c = ex.code; }
+      }
+      const title = decodeEmojiShortcodes(labels[i]) || fm.title || b.lang || ('代码 ' + (i + 1));
+      return { title: title, html: `<div class="cg-panel">${codeBlockHtml(c, b.lang || 'text', fm)}</div>` };
+    });
+    const radios = items.map((it, i) =>
       `<input class="cg-radio" type="radio" name="${escapeAttr(gid)}" id="${escapeAttr(gid)}-${i}"${i === 0 ? ' checked' : ''}>`).join('');
-    const tabbar = blocks.map((b, i) =>
-      `<label class="cg-tab" for="${escapeAttr(gid)}-${i}">${labelFor(b, i)}</label>`).join('');
-    const panels = blocks.map((b, i) =>
-      `<div class="cg-panel">${codeBlockHtml(b.code, b.lang || 'text', metas[i])}</div>`).join('');
+    const tabbar = items.map((it, i) =>
+      `<label class="cg-tab" for="${escapeAttr(gid)}-${i}">${escapeHtml(it.title)}</label>`).join('');
+    const panels = items.map(it => it.html).join('');
     return `<div class="code-group">${radios}<div class="cg-tabs">${tabbar}</div><div class="cg-panels">${panels}</div></div>`;
   }
 

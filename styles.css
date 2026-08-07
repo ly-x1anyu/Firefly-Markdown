@@ -598,6 +598,12 @@ select { appearance: none; cursor: pointer; padding-right: 28px;
 .markdown-body pre mark.mk-text {
   background: rgba(255, 212, 0, .38); color: inherit; border-radius: 3px; padding: 0 1px;
 }
+.markdown-body pre mark.mk-ins {
+  background: rgba(22, 163, 74, .30); color: inherit; border-radius: 3px; padding: 0 1px;
+}
+.markdown-body pre mark.mk-del {
+  background: rgba(244, 63, 94, .26); color: inherit; border-radius: 3px; padding: 0 1px; text-decoration: line-through;
+}
 /* ANSI 终端配色 */
 .markdown-body pre code .ansi-bold { font-weight: 700; }
 .markdown-body pre code .ansi-dim { opacity: .6; }
